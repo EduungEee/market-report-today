@@ -8,8 +8,8 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 0.5 0.2 25;
+    --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
@@ -25,28 +25,6 @@
     --font-sans: var(--font-geist-sans);
     --font-mono: var(--font-geist-mono);
   }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-  }
 }
 
 @layer base {
@@ -57,5 +35,73 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     font-family: var(--font-sans), system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .bg-primary {
+    background-color: oklch(var(--primary));
+  }
+  .text-primary {
+    color: oklch(var(--primary));
+  }
+  .border-primary {
+    border-color: oklch(var(--primary));
+  }
+  .text-primary-foreground {
+    color: hsl(var(--primary-foreground));
+  }
+  .bg-primary-foreground {
+    background-color: hsl(var(--primary-foreground));
+  }
+}
+
+@layer utilities {
+  /* Magic UI animations */
+  @keyframes shimmer-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes spin-around {
+    0% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    15%, 35% {
+      transform: translate(30%, -30%) rotate(90deg);
+    }
+    65%, 85% {
+      transform: translate(-30%, 30%) rotate(270deg);
+    }
+    100% {
+      transform: translate(0, 0) rotate(360deg);
+    }
+  }
+
+  @keyframes rippling {
+    0% {
+      transform: scale(0);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+
+  .animate-shimmer-slide {
+    animation: shimmer-slide 3s linear infinite;
+  }
+
+  .animate-spin-around {
+    animation: spin-around 3s linear infinite;
+  }
+
+  .animate-rippling {
+    animation: rippling 0.6s ease-out;
   }
 }

@@ -4,6 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.database import engine, Base
 from app.routers import health, analyze, reports, news
+from app.scheduler import start_scheduler, stop_scheduler
 import sys
 import os
 
@@ -58,6 +59,18 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(analyze.router, prefix="/api", tags=["analyze"])
 app.include_router(reports.router, prefix="/api", tags=["reports"])
 app.include_router(news.router, prefix="/api", tags=["news"])
+
+@app.on_event("startup")
+async def startup_event():
+    """앱 시작 시 스케줄러 초기화"""
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """앱 종료 시 스케줄러 중지"""
+    stop_scheduler()
+
 
 @app.get("/")
 async def root():

@@ -9,7 +9,10 @@ from datetime import date, datetime
 from typing import Optional
 from app.database import get_db
 from app.news import collect_news
-from app.analysis import analyze_and_save
+from app.analysis import analyze_and_save, analyze_news_from_vector_db
+from datetime import datetime, timedelta
+import pytz
+import httpx
 import sys
 import os
 
@@ -24,13 +27,11 @@ router = APIRouter()
 
 
 class AnalyzeRequest(BaseModel):
-    """분석 요청 모델"""
+    """분석 요청 모델 - 벡터 DB에서 뉴스를 조회하여 분석"""
     model_config = ConfigDict(
         json_schema_extra=lambda schema: schema.update({
             "example": {
                 "date": date.today().strftime("%Y-%m-%d"),
-                "query": "주식",
-                "size": 10,
                 "force": False
             }
         })
@@ -38,15 +39,7 @@ class AnalyzeRequest(BaseModel):
     
     date: Optional[str] = Field(
         None, 
-        description=f"YYYY-MM-DD 형식의 날짜 (예: {date.today().strftime('%Y-%m-%d')})"
-    )
-    query: str = Field("주식", description="뉴스 검색 쿼리", examples=["주식", "증시", "반도체"])
-    size: int = Field(
-        10, 
-        ge=1, 
-        le=10, 
-        description="가져올 뉴스 개수 (1-10, 무료 티어 제한)", 
-        examples=[10]  # Swagger 예시 값
+        description=f"YYYY-MM-DD 형식의 분석 날짜 (예: {date.today().strftime('%Y-%m-%d')}). 기본값: 오늘"
     )
     force: bool = Field(False, description="이미 분석된 날짜도 재분석할지 여부", examples=[False, True])
     
@@ -87,11 +80,12 @@ async def analyze_news(
     db: Session = Depends(get_db)
 ):
     """
-    뉴스를 수집하고 AI로 분석하여 보고서를 생성합니다.
+    벡터 DB에서 뉴스를 조회하고 AI로 분석하여 보고서를 생성합니다.
+    벡터 DB에서 현재 시간~전날 아침 6시 사이의 뉴스 기사를 조회합니다.
     """
     try:
         # 요청 로깅
-        print(f"분석 요청 받음: query={request.query}, size={request.size}, date={request.date}, force={request.force}")
+        print(f"분석 요청 받음: date={request.date}, force={request.force}")
         
         # 날짜 파싱
         analysis_date = date.today()
@@ -123,23 +117,34 @@ async def analyze_news(
                     news_count=0
                 )
         
-        # 뉴스 수집
-        news_articles = collect_news(db, query=request.query, size=request.size)
+        # 한국 시간대 설정
+        seoul_tz = pytz.timezone('Asia/Seoul')
+        now = datetime.now(seoul_tz)
         
-        if not news_articles:
-            raise HTTPException(
-                status_code=404,
-                detail="수집된 뉴스가 없습니다. 검색 쿼리를 조정해주세요."
-            )
+        # 전날 06:00:00 계산
+        yesterday_6am = (now - timedelta(days=1)).replace(hour=6, minute=0, second=0, microsecond=0)
         
-        # AI 분석 및 저장
-        report = analyze_and_save(db, news_articles, analysis_date)
+        # 현재 시간을 종료 시간으로 설정
+        end_datetime = now
+        
+        print(f"📅 벡터 DB에서 뉴스 조회: {yesterday_6am.strftime('%Y-%m-%d %H:%M:%S')} ~ {end_datetime.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # 벡터 DB에서 뉴스 조회 및 분석
+        report = analyze_news_from_vector_db(
+            db=db,
+            start_datetime=yesterday_6am,
+            end_datetime=end_datetime,
+            analysis_date=analysis_date
+        )
+        
+        # 뉴스 개수 계산
+        news_count = len(report.news_articles) if report.news_articles else 0
         
         return AnalyzeResponse(
             report_id=report.id,
             status="completed",
             message="분석이 완료되었습니다.",
-            news_count=len(news_articles)
+            news_count=news_count
         )
     
     except ValueError as e:

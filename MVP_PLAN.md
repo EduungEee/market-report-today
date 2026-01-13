@@ -8,9 +8,10 @@
 
 ## 🎯 핵심 기능 (MVP)
 
-1. ✅ **자동 뉴스 수집**: 1시간마다 newsdata.io API로 최신 뉴스 수집
+1. ✅ **자동 뉴스 수집**: 1시간마다 여러 뉴스 API 소스(newsdata.io 등)로 최신 뉴스 수집
    - title, description 데이터 추출
    - pgvector와 PostgreSQL에 각각 저장
+   - 여러 API 소스에서 수집한 뉴스 통합 관리
 2. ✅ **Vector DB 저장**: 수집된 뉴스의 meta description을 pgvector를 사용하여 PostgreSQL에 벡터 저장
 3. ✅ **자동 AI 분석**: 매일 아침 6시에 보고서 생성
    - 보고서 생성 시점으로부터 24시간 전의 뉴스 기사들을 활용
@@ -56,11 +57,17 @@
 
 - [x] 뉴스 API 연동 (`app/news.py`)
   - [x] newsdata.io API 연동 (최신 뉴스 데이터 가져오기)
+  - [ ] 여러 뉴스 API 소스 지원 (newsdata.io 외 추가 API 연동)
+    - [ ] 뉴스 API 추상화 인터페이스 설계
+    - [ ] 각 API별 구현체 작성
+    - [ ] 여러 API 소스에서 수집한 뉴스 통합 처리
   - [x] 뉴스 데이터에서 title, description 추출 함수
   - [x] 뉴스 저장 함수 (title, description 포함)
   - [x] 뉴스 수집 API 엔드포인트 (`routers/news.py`)
   - [x] `POST /api/get_news` 엔드포인트 구현 (뉴스 수집)
     - [x] newsdata.io API로 최신 뉴스 데이터 수집
+    - [ ] 여러 뉴스 API 소스에서 동시에 뉴스 수집
+    - [ ] 중복 뉴스 제거 로직 (여러 API에서 동일 뉴스 수집 시)
     - [x] 뉴스 데이터에서 title, description 추출
     - [x] 관계형 DB (PostgreSQL)에 저장
     - [x] 벡터 DB (pgvector)에 저장 (metadata 포함)
@@ -218,7 +225,7 @@ jtj/
 │   ├── app/
 │   │   ├── main.py          # FastAPI 앱 (스키마 초기화 포함)
 │   │   ├── database.py      # DB 연결 및 초기화 (pgvector 확장 설치)
-│   │   ├── news.py          # 뉴스 수집
+│   │   ├── news.py          # 뉴스 수집 (여러 API 소스 지원)
 │   │   ├── analysis.py      # AI 분석
 │   │   ├── scheduler.py     # 스케줄러 (뉴스 수집, 일일 분석)
 │   │   ├── vector_store.py  # Vector DB 저장 (pgvector)
@@ -350,7 +357,8 @@ CREATE TABLE email_subscriptions (
 ### 뉴스 관련
 
 - `POST /api/get_news` - 뉴스 수집 엔드포인트
-  - newsdata.io API로 최신 뉴스 데이터 수집
+  - 여러 뉴스 API 소스(newsdata.io 등)로 최신 뉴스 데이터 수집
+  - 여러 API 소스에서 수집한 뉴스 통합 처리 및 중복 제거
   - 뉴스 데이터에서 title, description 추출
   - 관계형 DB와 벡터 DB에 저장 (벡터 DB에는 날짜, 원문 링크 등 metadata 포함)
   - 1시간마다 크론잡으로 트리거됨
@@ -390,7 +398,8 @@ CREATE TABLE email_subscriptions (
 ### 자동 스케줄러
 
 - **뉴스 수집**: 매시간 자동 실행 (`POST /api/get_news` 호출)
-  - newsdata.io API로 최신 뉴스 데이터 수집
+  - 여러 뉴스 API 소스(newsdata.io 등)로 최신 뉴스 데이터 수집
+  - 여러 API 소스에서 수집한 뉴스 통합 처리 및 중복 제거
   - 뉴스 데이터에서 title, description 추출
   - 관계형 DB와 벡터 DB에 저장 (벡터 DB metadata: 날짜, 원문 링크 리스트)
 - **보고서 생성**: 매일 아침 6시 자동 실행 (`POST /api/analyze` 호출)
@@ -422,8 +431,11 @@ CREATE TABLE email_subscriptions (
 # OpenAI API
 OPENAI_API_KEY=your_openai_api_key
 
-# NewsData.io API
+# 뉴스 API (여러 소스 지원)
 NEWSDATA_API_KEY=your_newsdata_api_key
+# 추가 뉴스 API 키 (예: NewsAPI, Alpha Vantage 등)
+# NEWS_API_KEY=your_news_api_key
+# ALPHA_VANTAGE_API_KEY=your_alpha_vantage_api_key
 
 # Database
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/stock_analysis
@@ -517,7 +529,8 @@ CLERK_SECRET_KEY=your_clerk_secret_key
 ## 🎯 MVP 완성 기준
 
 - [ ] 1시간마다 자동 뉴스 수집 동작 (`POST /api/get_news` 호출)
-- [ ] newsdata.io API로 최신 뉴스 데이터 수집 및 title, description 추출
+- [ ] 여러 뉴스 API 소스(newsdata.io 등)로 최신 뉴스 데이터 수집 및 title, description 추출
+- [ ] 여러 API 소스에서 수집한 뉴스 통합 처리 및 중복 제거 동작
 - [ ] 뉴스 title, description을 관계형 DB와 벡터 DB에 저장
 - [ ] 벡터 DB에 날짜 및 원문 링크 리스트를 포함한 metadata 저장 (LLM 참조용)
 - [ ] 매일 아침 6시에 벡터 DB에서 전날 아침 6시~현재 시간 뉴스 기사 조회 후 LLM 보고서 작성

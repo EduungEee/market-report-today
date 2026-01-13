@@ -1,6 +1,7 @@
 """
 뉴스 수집 모듈
-newsdata.io API를 사용하여 최신 뉴스를 수집합니다.
+여러 뉴스 API(현재는 newsdata.io)를 사용하여 최신 뉴스를 수집할 수 있도록
+확장 가능한 아키텍처로 구성합니다.
 """
 import os
 import requests
@@ -11,6 +12,7 @@ from sqlalchemy import text
 import sys
 import os as os_module
 import json
+from abc import ABC, abstractmethod
 
 # models 경로 추가
 backend_path = os_module.path.dirname(os_module.path.dirname(os.path.abspath(__file__)))
@@ -21,7 +23,35 @@ from models.models import NewsArticle
 
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY")
 NEWSDATA_API_URL = "https://newsdata.io/api/1/latest"
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
+NAVER_API_URL = "https://openapi.naver.com/v1/search/news.json"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+
+class BaseNewsProvider(ABC):
+    """
+    뉴스 제공자 공통 인터페이스.
+    여러 뉴스 API를 동일한 형태의 결과로 반환하도록 추상화합니다.
+
+    새 뉴스 API를 추가할 때는 이 클래스를 상속받아 구현하고,
+    get_default_providers()에 등록하면 됩니다.
+    """
+
+    name: str = "base"
+
+    @abstractmethod
+    def fetch(self, query: str, size: int) -> List[dict]:
+        """
+        뉴스를 수집해 표준화된 딕셔너리 리스트로 반환합니다.
+        각 아이템은 다음 키를 포함해야 합니다:
+        - title: str
+        - content: str
+        - source: str
+        - url: str
+        - published_at: Optional[datetime]
+        """
+        raise NotImplementedError
 
 
 def fetch_news_from_api(query: str = "주식", size: int = 10) -> List[dict]:
@@ -146,6 +176,157 @@ def fetch_news_from_api(query: str = "주식", size: int = 10) -> List[dict]:
         print(f"newsdata.io API 요청 실패: {e}")
         print(f"Traceback: {traceback.format_exc()}")
         raise ValueError(f"newsdata.io API 요청 실패: {str(e)}")
+
+
+class NewsdataProvider(BaseNewsProvider):
+    """
+    newsdata.io 기반 뉴스 제공자.
+    기존 구현(fetch_news_from_api)을 Provider 인터페이스로 감싼 클래스입니다.
+    """
+
+    name = "newsdata.io"
+
+    def fetch(self, query: str = "주식", size: int = 10) -> List[dict]:
+        return fetch_news_from_api(query=query, size=size)
+
+
+def fetch_news_from_naver(query: str = "주식", size: int = 10) -> List[dict]:
+    """
+    Naver 뉴스 검색 API에서 최신 뉴스를 가져옵니다.
+    
+    Args:
+        query: 검색 쿼리 (기본값: "주식")
+        size: 가져올 뉴스 개수 (1-100, 기본값: 10개)
+    
+    Returns:
+        뉴스 기사 리스트
+    """
+    if not NAVER_CLIENT_ID or not NAVER_CLIENT_SECRET:
+        raise ValueError("NAVER_CLIENT_ID 또는 NAVER_CLIENT_SECRET 환경 변수가 설정되지 않았습니다.")
+    
+    # size 범위 검증 (Naver API: 1-100)
+    if size < 1 or size > 100:
+        raise ValueError(f"size는 1-100 사이의 값이어야 합니다. 현재 값: {size}")
+    
+    # Naver API 헤더 설정
+    headers = {
+        "X-Naver-Client-Id": NAVER_CLIENT_ID,
+        "X-Naver-Client-Secret": NAVER_CLIENT_SECRET
+    }
+    
+    # Naver API 파라미터 설정
+    params = {
+        "query": query,
+        "display": min(size, 100),  # 최대 100개
+        "sort": "date",  # 날짜순 정렬
+        "start": 1  # 시작 위치
+    }
+    
+    try:
+        print(f"Naver API 호출: query={query}, size={size}")
+        response = requests.get(NAVER_API_URL, headers=headers, params=params, timeout=10)
+        
+        # 응답 상태 확인
+        print(f"응답 상태 코드: {response.status_code}")
+        print(f"요청 URL: {response.url}")
+        
+        response.raise_for_status()
+        data = response.json()
+        
+        # Naver API 응답 형식 확인
+        total_results = data.get("total", 0)
+        items = data.get("items", [])
+        
+        print(f"API 응답 성공: 총 {total_results}개 결과, {len(items)}개 반환")
+        
+        articles = []
+        for item in items:
+            # HTML 태그 제거 (Naver API는 HTML 태그가 포함된 제목/내용을 반환)
+            title = item.get("title", "").replace("<b>", "").replace("</b>", "").replace("&quot;", '"').replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            description = item.get("description", "").replace("<b>", "").replace("</b>", "").replace("&quot;", '"').replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            originallink = item.get("originallink", "")
+            link = item.get("link", "")
+            # originallink가 있으면 우선 사용, 없으면 link 사용
+            url = originallink if originallink else link
+            
+            # pubDate 파싱 (Naver API 형식: "Mon, 15 Jan 2024 10:30:00 +0900")
+            published_at = None
+            pub_date_str = item.get("pubDate", "")
+            if pub_date_str:
+                try:
+                    # RFC 2822 형식 파싱 시도
+                    published_at = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S %z")
+                except ValueError:
+                    try:
+                        # 다른 형식 시도 (타임존 없이)
+                        published_at = datetime.strptime(pub_date_str, "%a, %d %b %Y %H:%M:%S")
+                    except ValueError:
+                        try:
+                            # ISO 형식 시도
+                            published_at = datetime.fromisoformat(pub_date_str.replace("Z", "+00:00"))
+                        except:
+                            print(f"날짜 파싱 실패: {pub_date_str}")
+                            pass
+            
+            articles.append({
+                "title": title,
+                "content": description,  # description을 content로 사용
+                "source": "Naver",  # Naver 뉴스는 출처가 Naver
+                "url": url,
+                "published_at": published_at
+            })
+        
+        print(f"파싱된 뉴스 기사: {len(articles)}개")
+        return articles
+    except requests.exceptions.HTTPError as e:
+        import traceback
+        print(f"Naver API HTTP 오류: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"응답 상태 코드: {e.response.status_code}")
+            print(f"응답 헤더: {dict(e.response.headers)}")
+            try:
+                error_data = e.response.json()
+                print(f"응답 내용: {error_data}")
+                error_message = error_data.get("errorMessage", "알 수 없는 오류")
+                raise ValueError(f"Naver API 오류 ({e.response.status_code}): {error_message}")
+            except:
+                print(f"응답 내용: {e.response.text}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise ValueError(f"Naver API 요청 실패: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        import traceback
+        print(f"Naver API 요청 실패: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise ValueError(f"Naver API 요청 실패: {str(e)}")
+
+
+class NaverProvider(BaseNewsProvider):
+    """
+    Naver 뉴스 검색 API 기반 뉴스 제공자.
+    """
+
+    name = "Naver"
+
+    def fetch(self, query: str = "주식", size: int = 10) -> List[dict]:
+        return fetch_news_from_naver(query=query, size=size)
+
+
+def get_default_providers() -> List[BaseNewsProvider]:
+    """
+    활성화된 기본 뉴스 제공자 목록을 반환합니다.
+    - NEWSDATA_API_KEY가 설정되어 있으면 newsdata.io Provider를 사용합니다.
+    - NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET이 설정되어 있으면 Naver Provider를 사용합니다.
+    - 향후 다른 뉴스 API를 추가할 때는 이 함수에 Provider를 추가하면 됩니다.
+    """
+    providers: List[BaseNewsProvider] = []
+
+    if NEWSDATA_API_KEY:
+        providers.append(NewsdataProvider())
+
+    if NAVER_CLIENT_ID and NAVER_CLIENT_SECRET:
+        providers.append(NaverProvider())
+
+    return providers
 
 
 def create_embedding(text_content: str) -> Optional[List[float]]:
@@ -422,32 +603,58 @@ def save_news_to_db(db: Session, articles: List[dict]) -> List[NewsArticle]:
 
 def collect_news(db: Session, query: str = "주식", size: int = 10) -> List[NewsArticle]:
     """
-    뉴스를 수집하고 데이터베이스에 저장합니다.
-    
+    (멀티 Provider 아키텍처) 뉴스를 수집하고 데이터베이스에 저장합니다.
+
+    여러 뉴스 API Provider를 통해 뉴스를 수집한 뒤,
+    URL 기준 중복 제거는 DB 저장 함수(save_news_to_db)에서 처리합니다.
+
     Args:
         db: 데이터베이스 세션
         query: 검색 쿼리
-        size: 가져올 뉴스 개수 (기본값: 10개, 무료 티어 제한)
-    
+        size: 전체적으로 가져올 목표 뉴스 개수 (기본값: 10개)
+
     Returns:
         저장된 NewsArticle 객체 리스트
-    
+
     Raises:
         ValueError: API 호출 실패 또는 뉴스 수집 실패 시
     """
     try:
-        # API에서 뉴스 가져오기
-        articles = fetch_news_from_api(query=query, size=size)
-        
-        if not articles:
-            raise ValueError(f"'{query}' 검색어로 뉴스를 찾을 수 없습니다. 다른 검색어를 시도해주세요.")
-        
-        # 데이터베이스에 저장
-        saved_articles = save_news_to_db(db, articles)
-        
-        print(f"뉴스 수집 완료: {len(saved_articles)}개 저장됨")
+        providers = get_default_providers()
+        if not providers:
+            raise ValueError("사용 가능한 뉴스 제공자가 없습니다. API 키 설정을 확인해주세요.")
+
+        # 여러 Provider에 분산할 개수 계산 (소수점 버림, 최소 1개)
+        per_provider_size = max(1, size // len(providers))
+
+        collected_articles: List[dict] = []
+
+        for provider in providers:
+            try:
+                print(f"▶ 뉴스 수집: provider={provider.name}, query={query}, size={per_provider_size}")
+                provider_articles = provider.fetch(query=query, size=per_provider_size)
+
+                # Provider 이름을 source가 비어 있을 때 기본값으로 사용
+                for article in provider_articles:
+                    if not article.get("source"):
+                        article["source"] = provider.name
+                collected_articles.extend(provider_articles)
+            except Exception as e:
+                # 개별 Provider 실패는 로그만 남기고 계속 진행
+                print(f"⚠️  뉴스 제공자 '{provider.name}' 수집 실패: {e}")
+
+        if not collected_articles:
+            raise ValueError(
+                f"'{query}' 검색어로 뉴스를 찾을 수 없습니다. "
+                f"다른 검색어를 시도하거나 Provider 구성을 확인해주세요."
+            )
+
+        # 데이터베이스에 저장 (URL 기반 중복 제거 포함)
+        saved_articles = save_news_to_db(db, collected_articles)
+
+        print(f"뉴스 수집 완료 (멀티 Provider): {len(saved_articles)}개 저장됨")
         return saved_articles
-    except ValueError as e:
+    except ValueError:
         # ValueError는 그대로 전달
         raise
     except Exception as e:

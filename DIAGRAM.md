@@ -86,10 +86,10 @@ sequenceDiagram
     Note over Scheduler: 매시간 자동 실행
     Scheduler->>Backend: POST /api/get_news 호출
     
-    loop 각 뉴스 API Provider (Greedy Filling 전략)
-        Backend->>ExternalAPI: 최신 뉴스 데이터 수집 요청 (변환된 쿼리 & 수량)
+    loop 각 뉴스 API Provider (Max Collection 전략)
+        Backend->>ExternalAPI: 최신 뉴스 데이터 수집 요청 (변환된 쿼리 & Provider별 최대 수량)
         ExternalAPI-->>Backend: 뉴스 데이터 목록
-        Note over Backend: 부족한 기사 수는 다음 API에서 보충
+        Note over Backend: 모든 Provider에서 최대 개수 수집
     end
     
     Backend->>Backend: 뉴스 데이터 통합 및 URL 기반 중복 제거
@@ -403,10 +403,9 @@ flowchart TD
     Orchestrate --> Split[쿼리 분리 및 OR 변환]
     Split --> LoopProviders{모든 Provider 시도?}
     
-    LoopProviders -->|아니오| Allocate[동적 수량 할당<br/>Greedy Filling]
-    Allocate --> Fetch[API 호출]
-    Fetch --> Update[잔여 수량 업데이트]
-    Update --> LoopProviders
+    LoopProviders -->|아니오| Fetch[API 호출 (Provider별 최대 수량)]
+    Fetch --> Collect[결과 수집]
+    Collect --> LoopProviders
     
     LoopProviders -->|예| Dedupe[URL 기반 중복 제거]
     Dedupe --> SaveNews[관계형 DB 저장]

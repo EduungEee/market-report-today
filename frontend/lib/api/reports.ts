@@ -145,3 +145,48 @@ export async function getReport(reportId: number): Promise<ReportDetail> {
     throw new ApiError(`Network error: ${error instanceof Error ? error.message : "Unknown error"}`, 0);
   }
 }
+
+/**
+ * 주식 재무 데이터 인터페이스
+ */
+export interface StockFinancial {
+  stock_code: string;
+  stock_name: string;
+  debt_ratio: number | null; // 부채비율 (%)
+  operating_profit_margin: number | null; // 영업이익률 (%)
+  source: string | null;
+}
+
+/**
+ * 주식의 재무 데이터를 조회합니다 (부채비율, 영업이익률).
+ */
+export async function getStockFinancial(
+  stockCode: string,
+  stockName?: string
+): Promise<StockFinancial> {
+  try {
+    const params = new URLSearchParams();
+    if (stockName) {
+      params.append("stock_name", stockName);
+    }
+
+    const url = params.toString()
+      ? `${API_BASE_URL}/api/stock/${stockCode}/financial?${params}`
+      : `${API_BASE_URL}/api/stock/${stockCode}/financial`;
+
+    const response = await fetch(url, {
+      next: { revalidate: 3600 }, // 1시간마다 재검증
+    });
+
+    if (!response.ok) {
+      throw new ApiError(`Failed to fetch stock financial data: ${response.statusText}`, response.status);
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(`Network error: ${error instanceof Error ? error.message : "Unknown error"}`, 0);
+  }
+}

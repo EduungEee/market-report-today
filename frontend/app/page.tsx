@@ -4,6 +4,9 @@ import { RecentReportsSection } from "@/components/recent-reports-section";
 import { HowItWorks } from "@/components/how-it-works";
 import { CTASection } from "@/components/cta-section";
 
+// SSR 전용 - 정적 생성 비활성화
+export const dynamic = "force-dynamic";
+
 /**
  * 홈페이지 메인 컴포넌트
  */

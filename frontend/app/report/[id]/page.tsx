@@ -11,6 +11,9 @@ interface ReportPageProps {
   params: Promise<{ id: string }>;
 }
 
+// SSR 전용 - 정적 생성 비활성화
+export const dynamic = "force-dynamic";
+
 /**
  * 읽는 시간 계산 (200자당 1분)
  */

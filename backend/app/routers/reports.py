@@ -2,7 +2,7 @@
 보고서 조회 API 라우터
 보고서 목록 및 상세 조회 엔드포인트
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from datetime import date, datetime
@@ -177,5 +177,116 @@ async def get_today_reports(
             news_count=news_count,
             industry_count=industry_count
         ))
+    
+    return result
+
+
+class StockFinancialResponse(BaseModel):
+    """주식 재무 데이터 응답 모델"""
+    stock_code: str
+    stock_name: str
+    debt_ratio: Optional[float] = None  # 부채비율 (%)
+    operating_profit_margin: Optional[float] = None  # 영업이익률 (%)
+    source: Optional[str] = None
+
+
+@router.get("/stock/{stock_code}/financial", response_model=StockFinancialResponse)
+async def get_stock_financial(
+    stock_code: str,
+    stock_name: Optional[str] = Query(None, description="종목명 (선택사항)")
+):
+    """
+    주식의 재무 데이터를 조회합니다 (부채비율, 영업이익률).
+    DuckDuckGo 검색과 BeautifulSoup 스크래핑을 사용합니다.
+    """
+    # analysis_v2의 검색 함수들 import
+    from app.analysis_v2 import search_with_duckduckgo, scrape_with_beautifulsoup
+    from langchain_openai import ChatOpenAI
+    from pydantic import BaseModel, Field
+    from typing import Optional as Opt
+    import os
+    
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1, api_key=OPENAI_API_KEY)
+    
+    class FinancialMetrics(BaseModel):
+        """재무 지표"""
+        debt_ratio: Opt[float] = Field(None, description="부채비율 (%)")
+        operating_profit_margin: Opt[float] = Field(None, description="영업이익률 (%)")
+        source: Opt[str] = Field(None, description="데이터 출처 URL")
+    
+    # 기본값
+    result = StockFinancialResponse(
+        stock_code=stock_code,
+        stock_name=stock_name or stock_code,
+        debt_ratio=None,
+        operating_profit_margin=None,
+        source=None
+    )
+    
+    try:
+        # 검색 쿼리 생성 (재무제표 중심으로 검색)
+        query = f"{stock_name or stock_code} {stock_code} 재무제표 부채비율 영업이익률"
+        
+        # DuckDuckGo 검색
+        search_results = search_with_duckduckgo(query, max_results=3)
+        
+        if not search_results:
+            return result
+        
+        # 상위 결과 스크래핑
+        scraped_contents = []
+        for search_result in search_results[:2]:
+            url = search_result.get("url", "")
+            snippet = search_result.get("snippet", "")
+            
+            page_content = scrape_with_beautifulsoup(url, max_length=2000)
+            
+            if page_content:
+                scraped_contents.append({
+                    "title": search_result.get("title", ""),
+                    "url": url,
+                    "snippet": snippet,
+                    "content": page_content
+                })
+        
+        if scraped_contents:
+            # LLM으로 재무 데이터 추출
+            results_text = "\n\n".join([
+                f"[{i+1}] {r['title']}\nURL: {r['url']}\n스니펫: {r['snippet']}\n내용: {r['content'][:1500]}"
+                for i, r in enumerate(scraped_contents)
+            ])
+            
+            extraction_prompt = f"""다음 검색 및 스크래핑 결과에서 {stock_name or stock_code}({stock_code})의 재무 데이터를 추출하세요.
+
+[검색 및 스크래핑 결과]
+{results_text}
+
+[추출할 데이터]
+1. 부채비율 (%) - 숫자만 (예: 45.2)
+2. 영업이익률 (%) - 숫자만 (예: 12.5)
+
+데이터를 찾을 수 없으면 null로 표시하세요.
+가장 신뢰할 수 있는 출처의 URL을 source에 기록하세요.
+
+JSON 형식으로 응답:
+{{
+    "debt_ratio": 45.2,
+    "operating_profit_margin": 12.5,
+    "source": "데이터 출처 URL"
+}}
+"""
+            
+            structured_llm = llm.with_structured_output(FinancialMetrics)
+            extracted_data = structured_llm.invoke(extraction_prompt)
+            
+            result.debt_ratio = extracted_data.debt_ratio
+            result.operating_profit_margin = extracted_data.operating_profit_margin
+            result.source = extracted_data.source
+            
+    except Exception as e:
+        import traceback
+        print(f"⚠️ 재무 데이터 조회 오류: {e}")
+        print(traceback.format_exc())
     
     return result

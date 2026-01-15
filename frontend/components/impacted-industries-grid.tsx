@@ -15,12 +15,12 @@ export function ImpactedIndustriesGrid({ industries }: ImpactedIndustriesGridPro
   }
 
   return (
-    <div className="mb-8">
+    <div>
       <div className="flex items-center gap-2 mb-4">
         <LiaIndustrySolid className="text-primary size-6 flex items-center justify-center" />
         <h2 className="text-xl font-semibold text-foreground">영향받는 산업</h2>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="flex flex-col gap-3">
         {industries.map((industry) => (
           <div key={industry.id} className="p-4 bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center gap-2 mb-2">
@@ -28,7 +28,7 @@ export function ImpactedIndustriesGrid({ industries }: ImpactedIndustriesGridPro
               <h3 className="font-semibold text-sm text-foreground">{industry.industry_name}</h3>
             </div>
             {industry.impact_description && (
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 {industry.impact_description}
               </p>
             )}

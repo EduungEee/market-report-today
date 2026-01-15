@@ -132,7 +132,7 @@ export function Navbar() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 w-full">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* 반투명 배경 with gradient border effect */}
         <div className="absolute inset-0 bg-white/80 backdrop-blur-md border-b border-white/20" />
 

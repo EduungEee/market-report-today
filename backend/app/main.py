@@ -12,15 +12,9 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from models import models
 
-# pgvector 확장 활성화
-from app.database import init_vector_extension, init_news_articles_schema
-init_vector_extension()
-
-# 데이터베이스 테이블 생성
-Base.metadata.create_all(bind=engine)
-
-# news_articles 테이블에 embedding, metadata 컬럼 추가
-init_news_articles_schema()
+# 데이터베이스 스키마 초기화 (서버 시작 시 자동으로 스키마 동기화)
+from app.database import initialize_schema
+initialize_schema()
 
 app = FastAPI(title="Stock Analysis API", version="1.0.0")
 

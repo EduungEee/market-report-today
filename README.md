@@ -17,13 +17,16 @@
   - 뉴스 기사 내용 분석 및 사회적 파급효과 예측
   - 영향받는 산업 및 주식 분석
 - 📧 **이메일 전송**: 매일 아침 7시에 생성된 보고서 링크를 사용자 이메일로 자동 전송
+- 📈 **주식 데이터 연동**: 
+  - **DART**: 기업 재무제표 데이터 수집 (유동자산, 매출액 등)
+  - **한국투자증권**: 전날 시가/종가 데이터 수집 (안정적인 토큰 캐싱 적용)
 
 ## 🛠 기술 스택 (MVP)
 
 - **Backend**: FastAPI, PostgreSQL + pgvector (Vector DB), OpenAI API
 - **Scheduler**: APScheduler (백그라운드 작업, 가볍고 FastAPI 통합 용이)
 - **Frontend**: Next.js 15 (App Router)
-- **기타**: Docker Compose, newsdata.io API, SendGrid/Resend (이메일 API)
+- **기타**: Docker Compose, newsdata.io API, SendGrid/Resend (이메일 API), DART API, 한국투자증권 API
 
 ## 🚀 빠른 시작
 
@@ -109,6 +112,11 @@ SENDGRID_API_KEY=your_sendgrid_api_key
 # 또는
 RESEND_API_KEY=your_resend_api_key
 FRONTEND_URL=http://localhost:3000
+
+# Stock API Keys
+DART_API_KEY=your_dart_api_key
+KOREA_INVESTMENT_API_KEY=your_korea_inv_key
+KOREA_INVESTMENT_API_SECRET=your_korea_inv_secret
 ```
 
 ---

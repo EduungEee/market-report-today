@@ -24,7 +24,9 @@
    - 회원탈퇴 기능
    - 이메일 변경 설정 (이메일 verification 필요)
 7. ⚠️ **이메일 전송**: 매일 아침 7시에 생성된 보고서 링크를 사용자 이메일로 자동 전송 (외부 이메일 API 사용: SendGrid/Resend)
-
+8. ✅ **주식 및 재무 데이터 연동**:
+   - **DART API**: 기업별 주요 재무제표(유동자산, 매출액, 영업이익 등) 수집
+   - **한국투자증권 API**: 특정 종목의 전날 시가 및 종가 데이터 수집 (토큰 캐싱 포함)
 ## 📅 일정 (5일 기준)
 
 ### Day 1: Backend 기본 구조 + DB
@@ -221,6 +223,9 @@ jtj/
 │   │   ├── news.py          # 뉴스 수집
 │   │   ├── analysis.py      # AI 분석
 │   │   ├── scheduler.py     # 스케줄러 (뉴스 수집, 일일 분석)
+│   │   ├── stock_api/       # 주식 관련 API 연동
+│   │   │   ├── dart_api.py           # DART 재무 데이터
+│   │   │   └── korea_investment_api.py # 한국투자증권 가격 데이터
 │   │   ├── vector_store.py  # Vector DB 저장 (pgvector)
 │   │   ├── report.py        # 보고서 생성
 │   │   └── email.py         # 이메일 전송 로직 (외부 API)
@@ -439,6 +444,11 @@ FRONTEND_URL=http://localhost:3000
 # Clerk 인증 (Frontend)
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
 CLERK_SECRET_KEY=your_clerk_secret_key
+
+# Stock API
+DART_API_KEY=your_dart_api_key
+KOREA_INVESTMENT_API_KEY=your_korea_inv_key
+KOREA_INVESTMENT_API_SECRET=your_korea_inv_secret
 ```
 
 ## ⚡ 빠른 시작 체크리스트

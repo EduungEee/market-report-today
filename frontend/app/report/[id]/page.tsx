@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import { getReport } from "@/lib/api/reports";
 import { IndustrySection } from "@/components/industry-section";
 import { Navbar } from "@/components/navbar";
@@ -38,6 +39,10 @@ export default async function ReportPage({ params }: ReportPageProps) {
   } catch (error) {
     notFound();
   }
+
+  // 로그인 상태 확인
+  const { userId } = await auth();
+  const isSignedIn = !!userId;
 
   const readingTime = calculateReadingTime(report.summary);
   const firstIndustry = report.industries.length > 0 ? report.industries[0] : null;
@@ -128,11 +133,12 @@ export default async function ReportPage({ params }: ReportPageProps) {
               </section>
 
               {/* 메인 콘텐츠 섹션 */}
-              <section className="py-8">
+              <section className="py-8 relative">
                 <div className="max-w-6xl mx-auto">
                   {/* 사회적 파급효과 분석 */}
                   {report.industries.length > 0 && (
                     <div className="mb-8">
+                      {/* 제목 - 항상 선명하게 표시 */}
                       <div className="flex items-center gap-2 mb-6">
                         <svg
                           className="w-5 h-5 text-primary"
@@ -150,18 +156,65 @@ export default async function ReportPage({ params }: ReportPageProps) {
                         </svg>
                         <h2 className="text-xl font-semibold text-foreground">사회적 파급효과 분석</h2>
                       </div>
-                      <div>
-                        {report.industries.map((industry) => (
-                          <IndustrySection key={industry.id} industry={industry} />
-                        ))}
+                      {/* 콘텐츠 */}
+                      <div className="relative">
+                        {isSignedIn ? (
+                          // 로그인한 경우: 실제 콘텐츠 표시
+                          report.industries.map((industry) => <IndustrySection key={industry.id} industry={industry} />)
+                        ) : (
+                          // 로그인하지 않은 경우: 플레이스홀더 콘텐츠 표시 (흐리게)
+                          <div className="blur-sm opacity-70">
+                            <div className="p-6 bg-white rounded-lg border shadow-sm mb-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-foreground">분석 중인 산업</h3>
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                                  분석 중
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground leading-relaxed">
+                                로그인하시면 상세한 산업별 분석 내용을 확인하실 수 있습니다. AI가 최신 뉴스를 기반으로
+                                사회적 파급효과를 분석하고, 영향받는 산업과 주식을 추천해드립니다.
+                              </p>
+                            </div>
+                            <div className="p-6 bg-white rounded-lg border shadow-sm mb-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-foreground">추가 분석 진행 중</h3>
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                                  분석 중
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground leading-relaxed">
+                                매일 아침 업데이트되는 분석 보고서를 이메일로 받아보세요. 투자 결정에 도움이 되는
+                                인사이트를 제공합니다.
+                              </p>
+                            </div>
+                            <div className="p-6 bg-white rounded-lg border shadow-sm mb-4">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-foreground">심층 분석 데이터</h3>
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                                  분석 중
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground leading-relaxed">
+                                로그인하시면 더 많은 산업 분석과 추천 종목 정보를 확인하실 수 있습니다.
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
-              </section>
 
-              {/* CTA 섹션 */}
-              <ReportCTASection />
+                {/* CTA 오버레이 (로그인하지 않은 경우에만 표시) */}
+                {!isSignedIn && (
+                  <div className="absolute inset-0 flex items-center justify-center z-10">
+                    <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-2xl p-6 w-full max-w-xl mx-4">
+                      <ReportCTASection />
+                    </div>
+                  </div>
+                )}
+              </section>
             </div>
 
             {/* 오른쪽: 영향받는 산업 사이드바 (모바일에서는 위로) */}

@@ -3,7 +3,6 @@ import { getReport } from "@/lib/api/reports";
 import { IndustrySection } from "@/components/industry-section";
 import { Navbar } from "@/components/navbar";
 import { ImpactedIndustriesGrid } from "@/components/impacted-industries-grid";
-import { RecommendedStocksSidebar } from "@/components/recommended-stocks-sidebar";
 import { ReportCTASection } from "@/components/report-cta-section";
 import { FiShare2, FiBookmark, FiExternalLink } from "react-icons/fi";
 
@@ -50,7 +49,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
       <Navbar />
 
       {/* 메인 컨텐츠 */}
-      <main className="mt-20 sm:mt-30">
+      <main className="mt-20 sm:mt-30 max-w-6xl mx-auto">
         <div className="container mx-auto px-4">
           <div className="flex flex-col lg:flex-row gap-8">
             {/* 왼쪽: 모든 콘텐츠 */}
@@ -158,9 +157,6 @@ export default async function ReportPage({ params }: ReportPageProps) {
                       </div>
                     </div>
                   )}
-
-                  {/* 영향받는 산업 */}
-                  {report.industries.length > 0 && <ImpactedIndustriesGrid industries={report.industries} />}
                 </div>
               </section>
 
@@ -168,10 +164,10 @@ export default async function ReportPage({ params }: ReportPageProps) {
               <ReportCTASection />
             </div>
 
-            {/* 오른쪽: 추천 종목 사이드바 (모바일에서는 위로) */}
-            <div className="lg:w-80 lg:flex-shrink-0 order-first lg:order-last">
+            {/* 오른쪽: 영향받는 산업 사이드바 (모바일에서는 위로) */}
+            <div className="lg:w-80 lg:shrink-0 order-first lg:order-last">
               <div className="lg:sticky lg:top-24">
-                {report.industries.length > 0 && <RecommendedStocksSidebar industries={report.industries} />}
+                {report.industries.length > 0 && <ImpactedIndustriesGrid industries={report.industries} />}
               </div>
             </div>
           </div>

@@ -5,7 +5,8 @@ import { IndustrySection } from "@/components/industry-section";
 import { Navbar } from "@/components/navbar";
 import { ImpactedIndustriesGrid } from "@/components/impacted-industries-grid";
 import { ReportCTASection } from "@/components/report-cta-section";
-import { FiShare2, FiBookmark, FiExternalLink } from "react-icons/fi";
+import { ShareButton } from "@/components/share-button";
+import { FiExternalLink } from "react-icons/fi";
 
 interface ReportPageProps {
   params: Promise<{ id: string }>;
@@ -65,13 +66,8 @@ export default async function ReportPage({ params }: ReportPageProps) {
                   <a href="/" className="text-muted-foreground hover:text-foreground transition-colors">
                     ← 홈으로
                   </a>
-                  <div className="flex items-center gap-4">
-                    <button className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="공유">
-                      <FiShare2 className="w-5 h-5 text-muted-foreground" />
-                    </button>
-                    <button className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="북마크">
-                      <FiBookmark className="w-5 h-5 text-muted-foreground" />
-                    </button>
+                  <div className="flex items-center gap-4 relative">
+                    <ShareButton title={report.title} reportId={reportId} />
                   </div>
                 </div>
               </div>

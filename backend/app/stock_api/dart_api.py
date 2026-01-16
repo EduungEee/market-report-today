@@ -4,6 +4,38 @@ import json
 from dotenv import load_dotenv
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, List, Optional
+from dataclasses import dataclass
+
+@dataclass
+class CorpCodeItem:
+    corp_code: str         # 고유번호
+    corp_name: str         # 종목명
+    corp_eng_name: str     # 종목영문명
+    stock_code: str        # 종목코드
+
+@dataclass
+class FinancialStatementItem:
+    rcept_no: str         # 접수번호
+    reprt_code: str       # 보고서 코드
+    bsns_year: str        # 사업연도
+    corp_code: str        # 고유번호
+    stock_code: str       # 종목코드
+    fs_div: str           # 재무제표 구분 (CFS: 연결재무제표, OFS: 재무제표)
+    fs_nm: str            # 재무제표 명칭
+    sj_div: str           # 계정구분 (BS: 재무상태표, IS: 손익계산서)
+    sj_nm: str            # 계정명칭
+    account_nm: str       # 항목명
+    thstrm_nm: str        # 당기 명칭
+    thstrm_dt: str        # 당기 일자
+    thstrm_amount: str    # 당기 금액
+    frmtrm_nm: str        # 전기 명칭
+    frmtrm_dt: str        # 전기 일자
+    frmtrm_amount: str    # 전기 금액
+    bfefrmtrm_nm: str     # 전전기 명칭
+    bfefrmtrm_dt: str     # 전전기 일자
+    bfefrmtrm_amount: str # 전전기 금액
+    ord: str              # 계정과목 정렬순서
+    currency: str         # 통화 단위
 
 load_dotenv()
 
@@ -14,15 +46,15 @@ DART_API_KEY = os.getenv("DART_API_KEY")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CORPCODE_PATH = os.path.join(BASE_DIR, "CORPCODE_filtered.xml")
 
-def get_corp_code_by_stock_code(stock_code: str) -> Optional[str]:
+def get_corp_code_by_stock_code(stock_code: str) -> Optional[CorpCodeItem]:
     """
-    상장 주식 코드(6자리)를 사용하여 DART 고유번호(8자리)를 찾습니다.
+    상장 주식 코드(6자리)를 사용하여 DART 고유번호(8자리) 및 기업 정보를 찾습니다.
     
     Args:
         stock_code (str): 상장 주식 코드 (예: '005930')
         
     Returns:
-        Optional[str]: DART 고유번호, 찾지 못한 경우 None
+        Optional[CorpCodeItem]: 기업 정보 객체, 찾지 못한 경우 None
     """
     if not os.path.exists(CORPCODE_PATH):
         print(f"Error: {CORPCODE_PATH} not found.")
@@ -35,16 +67,19 @@ def get_corp_code_by_stock_code(stock_code: str) -> Optional[str]:
         for list_node in root.findall('list'):
             sc_node = list_node.find('stock_code')
             if sc_node is not None and sc_node.text == stock_code:
-                corp_code_node = list_node.find('corp_code')
-                if corp_code_node is not None:
-                    return corp_code_node.text
+                return CorpCodeItem(
+                    corp_code=list_node.findtext('corp_code', ''),
+                    corp_name=list_node.findtext('corp_name', ''),
+                    corp_eng_name=list_node.findtext('corp_eng_name', ''),
+                    stock_code=sc_node.text
+                )
                     
         return None
     except Exception as e:
         print(f"Error parsing {CORPCODE_PATH}: {e}")
         return None
 
-def get_financial_statements(corp_codes: List[str], bsns_year: str = "2023", reprt_code: str = "11011") -> Dict[str, Any]:
+def get_financial_statements(corp_codes: List[str], bsns_year: str = "2023", reprt_code: str = "11011") -> List[FinancialStatementItem]:
     """
     DART API(fnlttMultiAcnt)를 사용하여 여러 기업의 주요 재무지표를 가져옵니다.
     
@@ -58,13 +93,17 @@ def get_financial_statements(corp_codes: List[str], bsns_year: str = "2023", rep
             11011: 사업보고서 (결산)
             
     Returns:
-        Dict[str, Any]: DART API 응답 데이터
+        List[FinancialStatementItem]: DART API 응답 데이터 (기업별 재무지표 리스트)
+        
+    Raises:
+        ValueError: API 키 누락, 빈 corp_codes 리스트 또는 DART API 상태 오류 시 발생
+        RuntimeError: 네트워크 요청 오류 시 발생
     """
     if not DART_API_KEY:
-        return {"success": False, "error": "DART_API_KEY is missing in .env file."}
+        raise ValueError("DART_API_KEY is missing in .env file.")
     
     if not corp_codes:
-        return {"success": False, "error": "corp_codes list is empty."}
+        raise ValueError("corp_codes list is empty.")
 
     # 기업 코드를 콤마로 연결
     corp_code_param = ",".join(corp_codes)
@@ -83,49 +122,37 @@ def get_financial_statements(corp_codes: List[str], bsns_year: str = "2023", rep
         data = response.json()
         
         if data.get("status") != "000":
-            return {
-                "success": False,
-                "error": data.get("message", "Unknown DART API error"),
-                "status": data.get("status")
-            }
+            raise ValueError(f"DART API Error ({data.get('status')}): {data.get('message', 'Unknown error')}")
             
-        return {
-            "success": True,
-            "data": data.get("list", [])
-        }
+        return [FinancialStatementItem(**item) for item in data.get("list", [])]
         
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Request Error: {str(e)}")
     except Exception as e:
-        return {
-            "success": False,
-            "error": f"Request Error: {str(e)}"
-        }
+        raise e
 
 if __name__ == "__main__":
-    # 1. stock_code -> corp_code 변환
-    stock_codes = ["005930", "035720"] # 삼성전자, 카카오
+    # 1. stock_code -> CorpCodeItem 변환 테스트
+    test_stock_code = "005930" # 삼성전자
+    print(f"Stock Code '{test_stock_code}'의 기업 정보 찾는 중...")
+    corp_info = get_corp_code_by_stock_code(test_stock_code)
     
-    corp_codes = []
-    for stock_code in stock_codes:
-        print(f"Stock Code '{stock_code}'의 Corp Code 찾는 중...")
-        corp_code = get_corp_code_by_stock_code(stock_code)
-        if not corp_code:
-            print("Corp Code를 찾지 못했습니다.")
-            continue
-        print(f"찾음! Corp Code: {corp_code}")
-        corp_codes.append(corp_code)
-    
-    # 2. 재무제표 조회 테스트
-    year = "2024"
-    
-    print(f"\nDART API 호출 중: {corp_codes}, 연도: {year}...")
-    result = get_financial_statements(corp_codes, year)
-    
-    if result.get("success"):
-        financial_list = result["data"]
-        print(f"성공: {len(financial_list)}개의 데이터 항목을 가져왔습니다.")
+    if corp_info:
+        print(f"찾음! 기업명: {corp_info.corp_name}, Corp Code: {corp_info.corp_code}")
         
-        # 기업별로 주요 지표 출력 (일부만)
-        for item in financial_list:
-            print(f"[{item.get('corp_code')}] {item.get('account_nm')}: {item.get('thstrm_amount')} {item.get('currency')}")
+        # 2. 재무제표 조회 테스트
+        test_codes = [corp_info.corp_code, "00334624"] # 삼성전자(검색), 카카오(고정)
+        year = "2023"
+        
+        print(f"\nDART API 호출 중: {test_codes}, 연도: {year}...")
+        try:
+            financial_list = get_financial_statements(test_codes, year)
+            print(f"성공: {len(financial_list)}개의 데이터 항목을 가져왔습니다.")
+            
+            # 기업별로 주요 지표 출력 (일부만)
+            for item in financial_list[:10]:
+                print(f"[{item.corp_code}] {item.account_nm}: {item.thstrm_amount} {item.currency}")
+        except Exception as e:
+            print(f"실패: {e}")
     else:
-        print(f"실패: {result.get('error')}")
+        print("기업 정보를 찾지 못했습니다.")

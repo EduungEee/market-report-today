@@ -3,9 +3,40 @@ import requests
 import json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass, field
 
 load_dotenv()
+
+@dataclass
+class StockPriceSummary:
+    prdy_vrss: str         # 전일 대비
+    prdy_vrss_sign: str    # 전일 대비 부호
+    prdy_ctrt: str         # 전일 대비율
+    stck_prdy_clpr: str    # 전일대비 종가
+    acml_vol: str          # 누적 거래량
+    acml_tr_pbmn: str      # 누적 거래대금
+    hts_kor_isnm: str      # 한글 종목명
+    stck_prpr: str         # 주식 현재가
+
+@dataclass
+class StockPriceHistory:
+    stck_bsop_date: str    # 주식 영업일자
+    stck_cntg_hour: str    # 주식 체결시간
+    stck_prpr: str         # 주식 현재가
+    stck_oprc: str         # 주식 시가
+    stck_hgpr: str         # 주식 최고가
+    stck_lwpr: str         # 주식 최저가
+    cntg_vol: str          # 체결 거래량
+    acml_tr_pbmn: str      # 누적 거래대금
+
+@dataclass
+class KoreaInvestmentResponse:
+    rt_cd: str                            # 성공 실패 여부
+    msg_cd: str                           # 응답코드
+    msg1: str                             # 응답 메세지
+    output1: Optional[StockPriceSummary] = None  # 응답 상세 (요약)
+    output2: List[StockPriceHistory] = field(default_factory=list) # 응답 상세 (내역)
 
 # 한국투자증권 API 설정
 APP_KEY = os.getenv("KOREA_INVESTMENT_API_KEY")
@@ -74,24 +105,22 @@ def get_access_token() -> Optional[str]:
         print(f"⚠️ API Exception: {e}")
         return None
 
-def get_yesterday_prices(stock_code: str) -> Dict[str, Any]:
+def get_yesterday_prices(stock_code: str) -> KoreaInvestmentResponse:
     """
-    한국투자증권 API를 사용하여 특정 종목의 전날 시가와 종가를 가져옵니다.
+    한국투자증권 API를 사용하여 특정 종목의 전날 시가와 종가를 포함한 데이터를 가져옵니다.
     '주식일별분봉조회' API를 사용합니다. (TR_ID: FHKST03010230)
     
     Args:
         stock_code (str): 종목코드 (6자리)
         
     Returns:
-        Dict[str, Any]: 전날 시가, 종가 데이터를 포함하는 딕셔너리
+        KoreaInvestmentResponse: API 응답 데이터를 구조화한 객체
     """
     token = get_access_token()
     if not token:
-        return {"success": False, "error": "Failed to get access token"}
+        return KoreaInvestmentResponse(rt_cd="1", msg_cd="TOKEN_ERROR", msg1="Failed to get access token")
 
     # 어제 날짜 구하기 (YYYYMMDD)
-    # 실제로는 '주식 영업일' 기준이어야 하지만, 
-    # API가 날짜를 입력받으므로 단순히 어제 날짜를 우선 사용합니다.
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
     
     url = f"{BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice"
@@ -108,10 +137,10 @@ def get_yesterday_prices(stock_code: str) -> Dict[str, Any]:
     params = {
         "FID_COND_MRKT_DIV_CODE": "J", # KRX
         "FID_INPUT_ISCD": stock_code,
-        "FID_INPUT_HOUR_1": "160000", # 장 종료 후 시간
+        "FID_INPUT_HOUR_1": "160000",
         "FID_INPUT_DATE_1": yesterday,
         "FID_PW_DATA_INCU_YN": "Y",
-        "FID_FAKE_TICK_INCU_YN": "" # 공백 필수 입력 (CSV 참고)
+        "FID_FAKE_TICK_INCU_YN": ""
     }
     
     try:
@@ -119,57 +148,29 @@ def get_yesterday_prices(stock_code: str) -> Dict[str, Any]:
         response.raise_for_status()
         data = response.json()
         
-        if data.get("rt_cd") != "0":
-            return {
-                "success": False, 
-                "error": data.get("msg1"), 
-                "msg_cd": data.get("msg_cd")
-            }
+        rt_cd = data.get("rt_cd", "1")
+        msg_cd = data.get("msg_cd", "")
+        msg1 = data.get("msg1", "")
         
-        output1 = data.get("output1", {})
-        output2 = data.get("output2", [])
+        if rt_cd != "0":
+            return KoreaInvestmentResponse(rt_cd=rt_cd, msg_cd=msg_cd, msg1=msg1)
         
-        if not output2:
-            return {
-                "success": False,
-                "error": f"No data found for date {yesterday}"
-            }
-
-        # output1.stck_prdy_clpr 가 전일 종가 (FID_INPUT_DATE_1 기준 전일)
-        # 하지만 사용자가 입력한 날짜(어제)의 시가와 종가를 원한다면 output2를 분석해야 함.
-        # output2는 분봉 데이터 리스트이며, 시간 내림차순으로 정렬되어 있음 (최신순).
+        raw_output1 = data.get("output1", {})
+        raw_output2 = data.get("output2", [])
         
-        # 입력한 날짜(yesterday)에 해당하는 데이터만 필터링
-        target_day_data = [item for item in output2 if item.get("stck_bsop_date") == yesterday]
+        output1 = StockPriceSummary(**raw_output1) if raw_output1 else None
+        output2 = [StockPriceHistory(**item) for item in raw_output2]
         
-        # 만약 휴장일 등으로 어제 데이터가 없다면, 가장 최근 영업일 데이터를 찾음
-        if not target_day_data and output2:
-            last_date = output2[0].get("stck_bsop_date")
-            target_day_data = [item for item in output2 if item.get("stck_bsop_date") == last_date]
-            yesterday = last_date # 실제 조회된 날짜로 업데이트
-
-        if not target_day_data:
-            return {"success": False, "error": "No price data available"}
-            
-        # 종가: 가장 늦은 시간의 현재가 (리스트의 첫 번째 항목이 대개 가장 늦은 시간)
-        close_price = target_day_data[0].get("stck_prpr")
-        # 시가: 가장 이른 시간의 시가 (리스트의 마지막 항목이 대개 가장 이른 시간)
-        open_price = target_day_data[-1].get("stck_oprc")
-        
-        return {
-            "success": True,
-            "stock_code": stock_code,
-            "date": yesterday,
-            "open_price": open_price,
-            "close_price": close_price,
-            "stock_name": output1.get("hts_kor_isnm")
-        }
+        return KoreaInvestmentResponse(
+            rt_cd=rt_cd,
+            msg_cd=msg_cd,
+            msg1=msg1,
+            output1=output1,
+            output2=output2
+        )
         
     except Exception as e:
-        return {
-            "success": False,
-            "error": f"Request Error: {str(e)}"
-        }
+        return KoreaInvestmentResponse(rt_cd="1", msg_cd="NET_ERROR", msg1=str(e))
 
 if __name__ == "__main__":
     # 테스트용 (삼성전자: 005930)
@@ -177,10 +178,20 @@ if __name__ == "__main__":
     print(f"한국투자증권 API 호출 중 (종목: {stock})...")
     result = get_yesterday_prices(stock)
     
-    if result.get("success"):
-        print(f"조회 날짜: {result['date']}")
-        print(f"종목명: {result['stock_name']}")
-        print(f"시가: {result['open_price']}")
-        print(f"종가: {result['close_price']}")
+    if result.rt_cd == "0":
+        if result.output1:
+            print(f"종목명: {result.output1.hts_kor_isnm}")
+            print(f"현재가: {result.output1.stck_prpr}")
+            print(f"전일대비 종가: {result.output1.stck_prdy_clpr}")
+        
+        if result.output2:
+            print(f"\n최근 영업일({result.output2[0].stck_bsop_date}) 가격 정보:")
+            # 종가: 리스트의 첫 번째 항목
+            print(f"종가: {result.output2[0].stck_prpr}")
+            # 시가: 해당 일자의 마지막 항목 (영업일이 같은지 확인 필요하나 단순화)
+            target_date = result.output2[0].stck_bsop_date
+            day_data = [item for item in result.output2 if item.stck_bsop_date == target_date]
+            if day_data:
+                print(f"시가: {day_data[-1].stck_oprc}")
     else:
-        print(f"실패: {result.get('error')}")
+        print(f"실패: {result.msg1} (코드: {result.msg_cd})")

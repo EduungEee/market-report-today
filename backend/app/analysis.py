@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 import pytz
 import sys
 import os as os_module
+import httpx
 
 # models 경로 추가
 backend_path = os_module.path.dirname(os_module.path.dirname(os_module.path.abspath(__file__)))
@@ -1361,12 +1362,15 @@ if LANGGRAPH_AVAILABLE:
 
 제한사항:
 - 단기 뉴스 모멘텀만으로 매수/매도 결정을 내리지 말고, 장기 구조적 성장 가능성과 리스크를 함께 평가하라.
-- 과도하게 공격적이거나 투기적인 표현("무조건 오른다" 등)은 금지한다.
+- 과도하게 공격적이거나 투기적인 표현(“무조건 오른다” 등)은 금지한다.
 - 뉴스에 존재하지 않는 사실을 단정적으로 만들어내지 말고,
   연쇄 시나리오도 '합리적인 추론' 수준에서만 제시하고,
   불확실성이 크면 reasoning에 그 사실을 명시하라.
 - 신뢰도(confidence_score)가 낮은 경우(예: 0.4 미만)에는
   구체적인 매수/매도보다는 관찰·모니터링 대상으로 서술하라.
+- reasoning의 첫 문장은 반드시 impact_chain_level과 propagation_path 범위를 명시한다.
+- impact_chain_level보다 높은 단계(예: 1차 종목에서 2차·3차 영향)는
+  reasoning과 propagation_path 어디에도 언급하지 않는다.
 
 연쇄 영향 분석 기준 (필수):
 1) 1차 영향 (confidence_score ≥ 0.7 필수)
@@ -1374,7 +1378,7 @@ if LANGGRAPH_AVAILABLE:
    - 또는 뉴스에서 드러난 사건이 매출/이익에 직접 연결되는 주체
    - 예: "삼성전자 반도체 매출 호조" → 삼성전자 (1차)
 
-2) 2차 영향 (confidence_score ≥ 0.5 필수)
+2) 2차 영향 (confidence_score ≥ 0.5 필수) 
    - 1차 영향의 핵심 공급업체/고객/파트너
    - 공급망 비중이 크거나, 역사적 상관관계가 명확한 경우만
    - 예: 삼성전자 반도체 호조 → SK하이닉스 HBM (2차, 실제 고객사임)
@@ -1384,23 +1388,38 @@ if LANGGRAPH_AVAILABLE:
    - 역사적 사례나 명확한 경제적 연결고리가 있을 때만
    - 예: HBM 수요 증가 → 포토닉스/소재 업체 (3차)
 
+출력 필수 규칙:
+- 최소 1개의 1차 + 1개의 2차 영향은 반드시 제시하라
+- 3차는 신뢰도 ≥ 0.3이고 논리적 연결고리가 명확할 때만 추가
+- 각 단계별 confidence_score는 다음 기준으로 부여하라:
+  | 단계 | 최소 신뢰도 | 뉴스 직접성 | 역사적 사례 |
+  |------|-------------|-------------|-------------|
+  | 1차  | ≥ 0.7      | 직접 언급  | 필요 없음  |
+  | 2차  | ≥ 0.5      | 간접 언급  | 있으면 +0.1|
+  | 3차  | ≥ 0.3      | 추론       | 있으면 +0.1|
+
+
 출력 형식:
 - 반드시 유효한 JSON만 출력하라.
 - JSON 이외의 설명, 자연어 문장, 마크다운은 출력하지 마라.
+- 아래 스키마를 정확히 따르라.
 
 JSON 스키마:
 {
   "summary": "아래 산업 분석에는 전체 시장 요약, 투자 전략(Buy/Hold/Sell), 연쇄 영향 시나리오가 포함되어 있습니다.",
+
   "industries": [
     {
       "industry_name": "시장 종합 및 투자 전략",
       "impact_level": "high" | "medium" | "low",
       "trend_direction": "positive" | "negative" | "neutral",
+
       "impact_description": {
         "market_summary": {
           "market_sentiment": "positive" | "negative" | "neutral",
           "key_themes": ["string"]
         },
+
         "buy_candidates": [
           {
             "industry": "string",
@@ -1410,27 +1429,291 @@ JSON 스키마:
                 "stock_code": "string",
                 "stock_name": "string",
                 "expected_trend": "up",
-                "confidence_score": 0.0-1.0,
+                "confidence_score": 0.0 | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1.0,
                 "impact_chain_level": 1 | 2 | 3,
-                "reasoning": "string"
+                "propagation_path": [
+                {
+                    "level": 1,
+                    "details": [
+                        "1차: 뉴스 직접 언급 → [구체적 사건]",
+                        "투자 논리: [매출/이익 영향 경로]",
+                        "신뢰도 근거: [뉴스 직접성/수치 명시]",
+                    ]
+                },
+                {
+                    "level": 2,
+                    "details": [
+                        "1차: [1차 산업/종목] 수요/공급 변화",
+                        "2차: [공급망 연결고리] → 본 종목 영향", 
+                        "신뢰도 근거: [역사적 사례/매출 비중/고객사 명시]",
+                    ]
+                },
+                {
+                    "level": 3,
+                    "details": [
+                        "1차: [1차 사건]",
+                        "2차: [2차 산업 영향]", 
+                        "3차: [인프라/후행 수혜] → 본 종목",
+                        "신뢰도 근거: [과거 유사 사례/투자 사이클]",
+                    ]
+                }
+                ],
+                "reasoning": "string",
+                "news_drivers": ["string"],
+                "risk_factors": ["string"]
               }
             ]
           }
         ],
-        "hold_candidates": [...],
-        "sell_candidates": [...]
+
+        "hold_candidates": [
+          {
+            "industry": "string",
+            "reason_industry": "string",
+            "stocks": [
+              {
+                "stock_code": "string",
+                "stock_name": "string",
+                "expected_trend": "neutral",
+                "confidence_score": 0.0 | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1.0,
+                "impact_chain_level": 1 | 2 | 3,
+                "propagation_path": [
+                {
+                    "level": 1,
+                    "details": [
+                        "1차: 뉴스 직접 언급 → [구체적 사건]",
+                        "투자 논리: [매출/이익 영향 경로]",
+                        "신뢰도 근거: [뉴스 직접성/수치 명시]",
+                    ]
+                },
+                {
+                    "level": 2,
+                    "details": [
+                        "1차: [1차 산업/종목] 수요/공급 변화",
+                        "2차: [공급망 연결고리] → 본 종목 영향", 
+                        "신뢰도 근거: [역사적 사례/매출 비중/고객사 명시]",
+                    ]
+                },
+                {
+                    "level": 3,
+                    "details": [
+                        "1차: [1차 사건]",
+                        "2차: [2차 산업 영향]", 
+                        "3차: [인프라/후행 수혜] → 본 종목",
+                        "신뢰도 근거: [과거 유사 사례/투자 사이클]",
+                    ]
+                }
+                ],
+                "reasoning": "string",
+                "news_drivers": ["string"],
+                "risk_factors": ["string"]
+              }
+            ]
+          }
+        ],
+
+        "sell_candidates": [
+          {
+            "industry": "string",
+            "reason_industry": "string",
+            "stocks": [
+              {
+                "stock_code": "string",
+                "stock_name": "string",
+                "expected_trend": "down",
+                "confidence_score": 0.0 | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1.0,
+                "impact_chain_level": 1 | 2 | 3,
+                "propagation_path": [
+                {
+                    "level": 1,
+                    "details": [
+                        "1차: 뉴스 직접 언급 → [구체적 사건]",
+                        "투자 논리: [매출/이익 영향 경로]",
+                        "신뢰도 근거: [뉴스 직접성/수치 명시]",
+                    ]
+                },
+                {
+                    "level": 2,
+                    "details": [
+                        "1차: [1차 산업/종목] 수요/공급 변화",
+                        "2차: [공급망 연결고리] → 본 종목 영향", 
+                        "신뢰도 근거: [역사적 사례/매출 비중/고객사 명시]",
+                    ]
+                },
+                {
+                    "level": 3,
+                    "details": [
+                        "1차: [1차 사건]",
+                        "2차: [2차 산업 영향]", 
+                        "3차: [인프라/후행 수혜] → 본 종목",
+                        "신뢰도 근거: [과거 유사 사례/투자 사이클]",
+                    ]
+                }
+                ],
+                "reasoning": "string",
+                "news_drivers": ["string"],
+                "risk_factors": ["string"]
+              }
+            ]
+          }
+        ]
       },
+
       "stocks": []
     }
   ]
 }
-""".strip()
-    
-        prompt = f"""
-[원본_뉴스]
-{state.get("news_content", "")}
-[원본_뉴스_끝]
+
+시장과 개별 종목의 관계 규칙:
+
+1) 시장 분위기(market_sentiment)의 역할
+- "market_sentiment"는 지수·시장 전반의 위험 선호/회피 상황을 나타낸다.
+- 이는 개별 종목의 단기 수급과 밸류에이션에 영향을 주지만,
+  모든 종목에 동일 방향의 결론을 강제로 적용하지 않는다.
+
+2) 역행 사례 허용 (중요)
+- 시장이 부정적이더라도, 구조적으로 성장성이 크거나
+  펀더멘털이 개선되는 소수 종목은 "up" 또는 "보유/추가 매수" 판단을 내릴 수 있다.
+- 반대로 시장이 긍정적이더라도, 경쟁력 약화·규제·수요 감소 등으로
+  장기 전망이 나쁜 종목은 "down" 또는 "매도/비중 축소" 판단을 내릴 수 있다.
+- 이러한 '시장과 반대 방향' 판단을 하는 경우,
+  reasoning에서 반드시 다음 두 가지를 모두 설명해야 한다.
+  1) 시장 전체와 다른 결론을 내린 이유 (종목의 특수 요인)
+  2) 시장 분위기가 이 종목에 미치는 제한적 영향 또는 리스크
+
+3) reasoning 내용 구조
+- expected_trend가 "up"이면서 market_sentiment가 "부정적"인 경우:
+  - 장기 펀더멘털·구조적 성장 요인 → 왜 시장과 달리 좋게 보는지
+  - 다만, 전체 시장이 부정적이라 단기 변동성·하락 리스크가 존재함을 함께 언급
+- expected_trend가 "down"이면서 market_sentiment가 "긍정적"인 경우:
+  - 산업 구조 변화, 경쟁 심화, 규제, 일회성 호재 소멸 등
+    종목 고유의 악재를 중심으로 설명
+  - 시장이 좋더라도 이 종목에는 왜 지속적으로 불리한지 서술
+
+4) 일관성 검증 규칙
+- 모델은 각 종목별로 다음을 스스로 점검해야 한다.
+  - market_sentiment와 expected_trend가 다른 방향일 경우,
+    reasoning 안에 '시장 vs 종목' 관점의 설명이 포함되어 있는지 확인한다.
+  - 만약 그런 설명이 없다면, reasoning을 수정하여
+    시장과 종목의 관계를 명시적으로 설명한다.
 """
+    
+        prompt_header = f"""아래는 지난 24시간 동안 수집된 뉴스 기사들이다.
+각 기사는 날짜, 제목, 본문, (존재한다면) 관련 종목 코드/종목명을 포함하고 있다.
+이 뉴스들을 분석하여, 위에서 제시한 JSON 스키마에 정확히 맞는 하나의 JSON 객체를 출력하라.
+
+[뉴스_데이터_시작]
+{news_summary}
+[뉴스_데이터_끝]
+
+propagation_path 출력 규칙 (필수):
+
+- propagation_path에는 impact_chain_level 이하의 단계만 포함한다.
+- impact_chain_level = 1 인 경우:
+  → propagation_path에는 level 1만 포함하고, level 2·3은 절대 출력하지 않는다.
+- impact_chain_level = 2 인 경우:
+  → propagation_path에는 level 1, level 2까지만 포함하고 level 3은 출력하지 않는다.
+- impact_chain_level = 3 인 경우:
+  → propagation_path에는 level 1, level 2, level 3을 모두 포함할 수 있다.
+- 위 규칙을 어길 경우 출력은 무효로 간주한다.
+
+주의:
+- summary는 약 500~800자 분량으로 작성하되, JSON 구조를 깨지 않는 것을 최우선으로 한다.
+- industries 배열은 최소 1개 이상 포함하되, 의미 있는 산업만 넣는다.
+- 종목 코드가 불명확하면 "stock_code": "" 로 두고, reasoning에 그 이유를 적는다.
+- 유효한 JSON만 출력하고, 그 외 어떤 텍스트도 출력하지 않는다.
+- propagation_path 배열의 길이는 impact_chain_level 값과 정확히 일치해야 한다.
+    - 예: impact_chain_level = 1 → propagation_path 길이 = 1
+
+추가 요구사항:
+- 각 종목의 reasoning에는 반드시 다음 세 가지가 모두 포함되도록 하라.
+  1) 1차/2차/3차 중 어느 단계의 영향인지 (impact_chain_level에 1, 2, 3으로 표시)
+  2) 영향이 전이되는 구체적 경로(propagation_path 배열에 단계별로 한국어로 서술)
+  3) 해당 시나리오에 대한 신뢰도(confidence_score 값과, 왜 그 정도 신뢰도를 부여했는지에 대한 설명)
+
+- 예시:
+  - 엔비디아 GPU 수요 급증 뉴스가 있을 경우,
+    엔비디아: impact_chain_level = 1, 직접 수혜.
+    HBM 공급업체(SK하이닉스 등): impact_chain_level = 2, GPU 업체의 부품 수요 전이.
+    HBM 소재/장비 업체: impact_chain_level = 3, 메모리 투자 확대의 후행 수혜.
+  - 이와 같이 한 산업의 변화가 밸류체인 상에서 어떻게 확산되는지
+    최소 1개 이상의 구체적인 연쇄 시나리오를 작성하라.
+
+- 신뢰도가 낮은 경우(confidence_score < 0.4)에는
+  reasoning에서 "시나리오 불확실성 높음", "추가 데이터 필요" 등으로 명시하고,
+  매수/매도보다는 관찰·모니터링 대상으로 설명하라.
+
+- 시장 분위기(market_sentiment)가 부정적이더라도, 일부 종목은 구조적으로 강한 성장성이나 실적 개선 요인으로 인해 "up" 또는 "보유" 판단을 내릴 수 있다.
+- 반대로 시장 분위기가 긍정적이더라도, 특정 종목은 경쟁력 약화, 규제, 수요 감소 등으로 인해 "down" 또는 "매도" 판단을 내릴 수 있다.
+- 이러한 시장과 반대 방향의 판단을 내리는 경우,
+  reasoning 안에 반드시
+  "시장 전체 분위기"와 "해당 종목의 개별 요인"을 비교하여 설명하라.
+
+- reasoning 작성 템플릿 (반드시 이 구조를 따르라):
+"[impact_chain_level]차 영향 | [propagation_path 요약] | 신뢰도[confidence_score]: [신뢰도 근거]
+
+장점: [구체적 호재/수혜 요인]
+리스크: [시장/경쟁/규제 리스크]
+결론: [buy/hold/sell 판단 + 시장 분위기 고려]"
+    
+예시:
+"2차 영향 | GPU 수요→HBM 수요 전이 | 신뢰도0.7: 엔비디아 실제 고객사
+ 
+장점: HBM 고마진·고수율로 이익 개선 기대
+리스크: 글로벌 경기 둔화로 데이터센터 투자 지연 가능성  
+결론: 시장 부정적이나 HBM 구조적 수요로 보유 적정"
+"""
+
+    # 실제 작동 예시는 f-string 바깥의 일반 문자열로 분리하여
+    # 중괄호({})를 포함하더라도 포맷 에러가 발생하지 않도록 처리
+        example_block = """
+
+실제 작동 예시 (패턴 복사 금지, 구조만 학습):
+
+뉴스: "삼성전자 HBM 매출 3배 증가, AI 서버 수요 급증"
+
+1차: 삼성전자 (000660)
+json
+{
+    "impact_chain_level": 1,
+    "propagation_path": [
+        "1차: HBM 매출 3배 증가 직접 언급",
+        "투자 논리: 반도체 부문 실적 개선",
+        "신뢰도 근거: 뉴스 수치 직접 명시"
+    ],
+    "confidence_score": 0.9,
+    "reasoning": "1차 영향 | HBM 매출 3배 직접 확인 | 신뢰도0.9: 뉴스 수치 명시\\n\\n장점: HBM 고마진으로 반도체 이익률 대폭 개선\\n리스크: 메모리 사이클 하단 가능성\\n결론: 시장 변동성 존재하나 1차 수혜로 강력 매수"
+}
+
+2차: SK하이닉스 (000660) 
+json
+{
+    "impact_chain_level": 2,
+    "propagation_path": [
+        "1차: 삼성전자 HBM 매출 3배 증가",
+        "2차: HBM 시장 1위 SK하이닉스 수혜",
+        "신뢰도 근거: HBM 시장점유율 50% 이상"
+    ],
+    "confidence_score": 0.8,
+    "reasoning": "2차 영향 | 삼성전자 HBM→시장 전체 수요 확대 | 신뢰도0.8: 시장 1위\\n\\n장점: HBM 선단공정 경쟁력으로 점유율 확대\\n리스크: 가격 경쟁 심화 가능성\\n결론: 시장 조정에도 구조적 수요로 보유/추가매수"
+}
+
+3차: 후공정 장비 (예: 한미반도체)
+json
+{
+    "impact_chain_level": 3,
+    "propagation_path": [
+        "1차: 삼성전자 HBM 생산 확대",
+        "2차: SK하이닉스 HBM 생산 확대",
+        "3차: 후공정 장비 투자 증가",
+        "신뢰도 근거: HBM 생산 증가시 장비 수요 동반 증가"
+    ],
+    "confidence_score": 0.5,
+    "reasoning": "3차 영향 | HBM 생산→장비 투자 | 신뢰도0.5: 사이클 의존도\\n\\n장점: HBM 생산 증가시 후공정 수혜\\n리스크: 투자 시점 불확실, 사이클 의존도 높음\\n결론: 관찰 후 2차 확인시 진입 고려"
+}
+"""
+
+        prompt = prompt_header + example_block
     
         google_api_key = os.getenv("GOOGLE_API_KEY") or GEMINI_API_KEY
         if not google_api_key:
@@ -1933,16 +2216,18 @@ def analyze_and_save(
             print(f"Traceback: {traceback.format_exc()}")
             print("🔄 기본 분석 방식으로 전환...")
             # 기본 방식으로 폴백
+    else:
+        result_text = "langgraph 사용 불가"
+        report = "langgraph 사용 불가"
+    # # 기본 분석 방식 (LangGraph 사용 불가 시)
+    # print("🔄 기본 분석 방식으로 분석 시작...")
+    # analysis_result = analyze_news_with_ai(news_articles)
     
-    # 기본 분석 방식 (LangGraph 사용 불가 시)
-    print("🔄 기본 분석 방식으로 분석 시작...")
-    analysis_result = analyze_news_with_ai(news_articles)
+    # # result_text 추출
+    # result_text = analysis_result.get("result_text", "")
     
-    # result_text 추출
-    result_text = analysis_result.get("result_text", "")
-    
-    # 결과 저장
-    report = save_analysis_to_db(db, news_articles, analysis_result, analysis_date)
+    # # 결과 저장
+    # report = save_analysis_to_db(db, news_articles, analysis_result, analysis_date)
     
     return report, result_text
 

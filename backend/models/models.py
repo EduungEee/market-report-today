@@ -47,6 +47,7 @@ class Report(Base):
     summary = Column(Text)
     created_at = Column(TIMESTAMP, server_default=func.now())
     analysis_date = Column(DATE, nullable=False)
+    report_metadata = Column("metadata", JSONB)  # report_data 저장용 (related_news 등 포함)
 
     # 관계
     news_articles = relationship("NewsArticle", secondary=report_news, back_populates="reports")
@@ -62,6 +63,7 @@ class ReportIndustry(Base):
     impact_level = Column(String(50))  # 'high', 'medium', 'low'
     impact_description = Column(Text)
     trend_direction = Column(String(50))  # 'positive', 'negative', 'neutral'
+    selection_reason = Column(Text)  # 산업 선별 이유
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     # 관계
@@ -80,6 +82,8 @@ class ReportStock(Base):
     expected_trend = Column(String(50))  # 'up', 'down', 'neutral'
     confidence_score = Column(DECIMAL(3, 2))  # 0.00 ~ 1.00
     reasoning = Column(Text)
+    health_factor = Column(DECIMAL(3, 2))  # 0.00 ~ 1.00
+    dart_code = Column(String(50))  # DART API용 코드
     created_at = Column(TIMESTAMP, server_default=func.now())
 
     # 관계

@@ -27,6 +27,19 @@ export interface Stock {
   expected_trend: string | null;
   confidence_score: number | null;
   reasoning: string | null;
+  health_factor: number | null;
+  dart_code: string | null;
+}
+
+/**
+ * 관련 뉴스 타입
+ */
+export interface RelatedNews {
+  news_id: number;
+  title: string;
+  url: string | null;
+  published_at: string | null;
+  impact_on_industry: string | null;
 }
 
 /**
@@ -38,6 +51,8 @@ export interface Industry {
   impact_level: string | null;
   impact_description: string | null;
   trend_direction: string | null;
+  selection_reason: string | null;
+  related_news: RelatedNews[];
   stocks: Stock[];
 }
 

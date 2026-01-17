@@ -43,9 +43,20 @@ class StockResponse(BaseModel):
     expected_trend: Optional[str] = None
     confidence_score: Optional[float] = None
     reasoning: Optional[str] = None
+    health_factor: Optional[float] = None
+    dart_code: Optional[str] = None
     
     class Config:
         from_attributes = True
+
+
+class RelatedNewsResponse(BaseModel):
+    """관련 뉴스 응답 모델"""
+    news_id: int
+    title: str
+    url: Optional[str] = None
+    published_at: Optional[str] = None
+    impact_on_industry: Optional[str] = None
 
 
 class IndustryResponse(BaseModel):
@@ -55,6 +66,8 @@ class IndustryResponse(BaseModel):
     impact_level: Optional[str] = None
     impact_description: Optional[str] = None
     trend_direction: Optional[str] = None
+    selection_reason: Optional[str] = None
+    related_news: List[RelatedNewsResponse] = []
     stocks: List[StockResponse] = []
     
     class Config:
@@ -108,6 +121,33 @@ async def get_report(
             status_code=404,
             detail=f"보고서를 찾을 수 없습니다. (ID: {report_id})"
         )
+    
+    # report_metadata에서 related_news 정보를 industries에 추가
+    if report.report_metadata and isinstance(report.report_metadata, dict):
+        industries_data = report.report_metadata.get("industries", [])
+        
+        # 각 산업에 related_news 추가
+        for industry in report.industries:
+            # metadata에서 해당 산업 데이터 찾기
+            industry_metadata = next(
+                (ind for ind in industries_data if ind.get("industry_name") == industry.industry_name),
+                None
+            )
+            
+            if industry_metadata:
+                # related_news를 industry 객체에 동적으로 추가
+                related_news = industry_metadata.get("related_news", [])
+                # SQLAlchemy 객체에 동적 속성 추가
+                setattr(industry, "related_news", [
+                    RelatedNewsResponse(
+                        news_id=news.get("news_id"),
+                        title=news.get("title", ""),
+                        url=news.get("url"),
+                        published_at=news.get("published_at"),
+                        impact_on_industry=news.get("impact_on_industry")
+                    )
+                    for news in related_news
+                ])
     
     return report
 

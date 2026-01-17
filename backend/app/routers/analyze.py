@@ -9,7 +9,9 @@ from datetime import date, datetime
 from typing import Optional
 from app.database import get_db
 from app.news import collect_news
-from app.analysis import analyze_and_save, analyze_news_from_vector_db
+from app.graph.report_graph import create_report_graph
+from app.graph.save_report import save_report_to_db
+from app.graph.state import ReportGenerationState
 from datetime import datetime, timedelta
 import pytz
 import httpx
@@ -126,16 +128,57 @@ async def analyze_news(
         print(f"📅 벡터 DB에서 뉴스 조회: {yesterday_6am.strftime('%Y-%m-%d %H:%M:%S')} ~ {end_datetime.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"📅 분석 대상 날짜: {analysis_date}")
         
-        # 벡터 DB에서 뉴스 조회 및 분석
-        report = analyze_news_from_vector_db(
+        # LangGraph를 사용한 보고서 생성 (db 전달)
+        graph = create_report_graph(db=db)
+        
+        # 초기 상태 설정
+        current_time = datetime.now(seoul_tz)
+        initial_state: ReportGenerationState = {
+            "analysis_date": analysis_date,
+            "current_time": current_time,
+            "filtered_news": [],
+            "selected_news": [],
+            "news_scores": {},
+            "selection_reasons": {},
+            "predicted_industries": [],
+            "companies_by_industry": {},
+            "financial_data": {},
+            "health_factors": {},
+            "report_data": {},
+            "report_id": None,
+            "errors": []
+        }
+        
+        # 그래프 실행
+        print("🚀 LangGraph 실행 시작...")
+        final_state = graph.invoke(initial_state)
+        
+        # 에러 확인
+        errors = final_state.get("errors", [])
+        if errors:
+            error_msg = "; ".join(errors)
+            print(f"⚠️  그래프 실행 중 오류 발생: {error_msg}")
+            # 에러가 있어도 진행 (부분적 성공 허용)
+        
+        # 보고서 데이터 확인
+        report_data = final_state.get("report_data", {})
+        selected_news = final_state.get("selected_news", [])
+        
+        if not report_data or not selected_news:
+            raise ValueError("보고서 생성에 실패했습니다. 뉴스나 보고서 데이터가 없습니다.")
+        
+        # 데이터베이스에 저장
+        report = save_report_to_db(
             db=db,
-            start_datetime=yesterday_6am,
-            end_datetime=end_datetime,
+            report_data=report_data,
+            selected_news=selected_news,
             analysis_date=analysis_date
         )
         
         # 뉴스 개수 계산
-        news_count = len(report.news_articles) if report.news_articles else 0
+        news_count = len(selected_news)
+        
+        print(f"✅ 보고서 생성 완료: ID={report.id}, 뉴스 {news_count}개")
         
         return AnalyzeResponse(
             report_id=report.id,

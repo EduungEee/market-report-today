@@ -96,7 +96,23 @@ export default async function ReportPage({ params }: ReportPageProps) {
                   {/* 요약 */}
                   {report.summary && (
                     <div className="my-10">
-                      <p className="text-lg text-muted-foreground leading-relaxed">{report.summary}</p>
+                      <div
+                        className="text-lg text-muted-foreground leading-relaxed prose prose-lg max-w-none"
+                        dangerouslySetInnerHTML={{
+                          __html: (() => {
+                            // 이미 <p> 태그가 포함되어 있는지 확인
+                            if (report.summary.includes("<p>")) {
+                              return report.summary;
+                            }
+                            // <p> 태그가 없으면 문단별로 분리
+                            return report.summary
+                              .split(/\n\n+/)
+                              .filter((part) => part.trim())
+                              .map((part) => `<p>${part.trim()}</p>`)
+                              .join("");
+                          })(),
+                        }}
+                      />
                     </div>
                   )}
 

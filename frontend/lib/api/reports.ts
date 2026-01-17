@@ -82,9 +82,7 @@ export class ApiError extends Error {
  */
 export async function getAllReports(limit: number = 10): Promise<ReportListItem[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/reports?limit=${limit}`, {
-      next: { revalidate: 60 }, // 60초마다 재검증
-    });
+    const response = await fetch(`${API_BASE_URL}/api/reports?limit=${limit}`);
 
     if (!response.ok) {
       throw new ApiError(`Failed to fetch reports: ${response.statusText}`, response.status);
@@ -104,9 +102,7 @@ export async function getAllReports(limit: number = 10): Promise<ReportListItem[
  */
 export async function getTodayReports(): Promise<ReportListItem[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/reports/today`, {
-      next: { revalidate: 60 }, // 60초마다 재검증
-    });
+    const response = await fetch(`${API_BASE_URL}/api/reports/today`);
 
     if (!response.ok) {
       throw new ApiError(`Failed to fetch today's reports: ${response.statusText}`, response.status);
@@ -126,9 +122,7 @@ export async function getTodayReports(): Promise<ReportListItem[]> {
  */
 export async function getReport(reportId: number): Promise<ReportDetail> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/report/${reportId}`, {
-      next: { revalidate: 300 }, // 5분마다 재검증
-    });
+    const response = await fetch(`${API_BASE_URL}/api/report/${reportId}`);
 
     if (!response.ok) {
       if (response.status === 404) {

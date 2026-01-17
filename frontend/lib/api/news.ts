@@ -20,9 +20,7 @@ export class ApiError extends Error {
  */
 export async function getNewsCount(): Promise<number> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/news/count`, {
-      next: { revalidate: 300 }, // 5분마다 재검증
-    });
+    const response = await fetch(`${API_BASE_URL}/api/news/count`);
 
     if (!response.ok) {
       throw new ApiError(`Failed to fetch news count: ${response.statusText}`, response.status);

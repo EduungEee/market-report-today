@@ -118,13 +118,14 @@ async def get_all_reports(
     db: Session = Depends(get_db)
 ):
     """
-    전체 보고서 목록을 조회합니다 (최신순).
+    전체 보고서 목록을 조회합니다 (분석 날짜 최신순).
     """
     # 전체 보고서 조회 (관계 데이터도 함께 로드)
+    # analysis_date 기준 최신순 정렬 (날짜가 같으면 created_at 기준)
     reports = db.query(Report).options(
         joinedload(Report.news_articles),
         joinedload(Report.industries)
-    ).order_by(Report.created_at.desc()).limit(limit).all()
+    ).order_by(Report.analysis_date.desc(), Report.created_at.desc()).limit(limit).all()
     
     # 각 보고서의 뉴스 개수와 산업 개수 계산
     result = []
@@ -155,12 +156,13 @@ async def get_today_reports(
     today = date.today()
     
     # 오늘 날짜의 보고서 조회 (관계 데이터도 함께 로드)
+    # analysis_date 기준 최신순 정렬 (날짜가 같으면 created_at 기준)
     reports = db.query(Report).options(
         joinedload(Report.news_articles),
         joinedload(Report.industries)
     ).filter(
         Report.analysis_date == today
-    ).order_by(Report.created_at.desc()).all()
+    ).order_by(Report.analysis_date.desc(), Report.created_at.desc()).all()
     
     # 각 보고서의 뉴스 개수와 산업 개수 계산
     result = []

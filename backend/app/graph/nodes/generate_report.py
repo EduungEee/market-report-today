@@ -186,26 +186,47 @@ def generate_report(state: ReportGenerationState, config: Dict[str, Any] = None)
             companies = []
             industry_companies = companies_by_industry.get(industry_name, [])
             
-            for company_data in industry_data.get("companies", []):
-                stock_code = company_data.get("stock_code", "")
-                
-                # 실제 회사 데이터 찾기
-                actual_company = next(
-                    (c for c in industry_companies if c.get("stock_code") == stock_code),
-                    None
-                )
-                
-                if actual_company:
-                    health_data = health_factors.get(stock_code, {})
-                    health_factor = health_data.get("health_factor", 0.5)
+            # LLM이 생성한 회사 목록이 있는 경우 매칭 시도
+            llm_companies = industry_data.get("companies", [])
+            if llm_companies:
+                for company_data in llm_companies:
+                    stock_code = company_data.get("stock_code", "")
                     
-                    companies.append({
-                        "stock_code": stock_code,
-                        "stock_name": company_data.get("stock_name", actual_company.get("stock_name", "")),
-                        "dart_code": company_data.get("dart_code", actual_company.get("dart_code", "")),
-                        "health_factor": health_factor,
-                        "reasoning": company_data.get("reasoning", actual_company.get("reasoning", ""))
-                    })
+                    # 실제 회사 데이터 찾기
+                    actual_company = next(
+                        (c for c in industry_companies if c.get("stock_code") == stock_code),
+                        None
+                    )
+                    
+                    if actual_company:
+                        health_data = health_factors.get(stock_code, {})
+                        health_factor = health_data.get("health_factor", 0.5)
+                        
+                        companies.append({
+                            "stock_code": stock_code,
+                            "stock_name": company_data.get("stock_name", actual_company.get("stock_name", "")),
+                            "dart_code": company_data.get("dart_code", actual_company.get("dart_code", "")),
+                            "health_factor": health_factor,
+                            "reasoning": company_data.get("reasoning", actual_company.get("reasoning", ""))
+                        })
+            
+            # LLM이 생성한 회사 목록이 비어있거나 매칭된 회사가 없는 경우, 
+            # companies_by_industry의 실제 회사 목록을 사용 (fallback)
+            if not companies and industry_companies:
+                print(f"⚠️  {industry_name}: LLM이 생성한 회사 목록이 비어있거나 매칭되지 않아 실제 회사 목록을 사용합니다.")
+                for actual_company in industry_companies:
+                    stock_code = actual_company.get("stock_code", "")
+                    if stock_code:
+                        health_data = health_factors.get(stock_code, {})
+                        health_factor = health_data.get("health_factor", 0.5)
+                        
+                        companies.append({
+                            "stock_code": stock_code,
+                            "stock_name": actual_company.get("stock_name", ""),
+                            "dart_code": actual_company.get("dart_code", ""),
+                            "health_factor": health_factor,
+                            "reasoning": actual_company.get("reasoning", "해당 산업의 주요 기업")
+                        })
             
             report_data["industries"].append({
                 "industry_name": industry_name,

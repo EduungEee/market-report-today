@@ -78,12 +78,61 @@ docker-compose -f docker-compose.prod.yml ps
 echo -e "${YELLOW}8. 최근 로그 확인 중...${NC}"
 docker-compose -f docker-compose.prod.yml logs --tail=50 backend
 
+# 9. nginx 설치 확인
+echo -e "${YELLOW}9. nginx 설치 확인 중...${NC}"
+if ! command -v nginx &> /dev/null; then
+    echo -e "${YELLOW}nginx가 설치되어 있지 않습니다. 설치 중...${NC}"
+    sudo apt update
+    sudo apt install nginx -y
+    sudo systemctl enable nginx
+    echo -e "${GREEN}✓ nginx 설치 완료${NC}"
+else
+    echo -e "${GREEN}✓ nginx 설치 확인됨${NC}"
+fi
+
+# 10. nginx 설정 파일 적용
+echo -e "${YELLOW}10. nginx 설정 파일 적용 중...${NC}"
+if [ ! -f nginx/nginx.conf ]; then
+    echo -e "${RED}nginx/nginx.conf 파일을 찾을 수 없습니다.${NC}"
+    echo -e "${YELLOW}⚠️  nginx 설정을 수동으로 적용하세요.${NC}"
+else
+    # nginx 설정 파일 복사
+    sudo cp nginx/nginx.conf /etc/nginx/sites-available/jtj
+    
+    # 심볼릭 링크 생성 (이미 존재하면 제거 후 생성)
+    if [ -L /etc/nginx/sites-enabled/jtj ]; then
+        sudo rm /etc/nginx/sites-enabled/jtj
+    fi
+    sudo ln -s /etc/nginx/sites-available/jtj /etc/nginx/sites-enabled/
+    
+    # 기본 설정 비활성화 (선택사항 - 사용자가 원하면 주석 해제)
+    # if [ -L /etc/nginx/sites-enabled/default ]; then
+    #     sudo rm /etc/nginx/sites-enabled/default
+    # fi
+    
+    # nginx 설정 테스트
+    if sudo nginx -t; then
+        echo -e "${GREEN}✓ nginx 설정 파일 검증 성공${NC}"
+        
+        # nginx 재시작
+        echo -e "${YELLOW}nginx 재시작 중...${NC}"
+        sudo systemctl restart nginx
+        echo -e "${GREEN}✓ nginx 재시작 완료${NC}"
+    else
+        echo -e "${RED}nginx 설정 파일에 오류가 있습니다.${NC}"
+        echo -e "${YELLOW}⚠️  nginx 설정을 수동으로 확인하세요.${NC}"
+        echo "  sudo nginx -t"
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}✅ 배포 완료!${NC}"
 echo ""
 echo "다음 명령어로 서비스 상태를 확인할 수 있습니다:"
 echo "  docker-compose -f docker-compose.prod.yml ps"
 echo "  docker-compose -f docker-compose.prod.yml logs -f backend"
+echo "  sudo systemctl status nginx"
 echo ""
-echo "nginx 설정을 완료한 후 서비스를 재시작하세요:"
-echo "  sudo systemctl restart nginx"
+echo "nginx 로그 확인:"
+echo "  sudo tail -f /var/log/nginx/access.log"
+echo "  sudo tail -f /var/log/nginx/error.log"

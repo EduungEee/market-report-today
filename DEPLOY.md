@@ -185,31 +185,6 @@ cd ~/stock-analysis
 nano .env
 ```
 
-다음 내용을 입력합니다:
-
-```env
-# OpenAI API Key
-OPENAI_API_KEY=your_openai_api_key_here
-
-# NewsData.io API Key
-NEWSDATA_API_KEY=your_newsdata_api_key_here
-
-# Database URL (docker-compose 사용 시 자동 설정됨)
-# DATABASE_URL=postgresql://postgres:postgres@postgres:5432/stock_analysis
-
-# 프론트엔드 URL (CORS 설정용)
-FRONTEND_URL=https://your-frontend-domain.vercel.app
-
-# Vercel 도메인 목록 (쉼표로 구분, 여러 도메인 허용)
-# 예: VERCEL_DOMAINS=https://your-app.vercel.app,https://www.yourdomain.com
-VERCEL_DOMAINS=https://your-app.vercel.app
-
-# 환경 설정
-ENVIRONMENT=production
-```
-
-파일 저장: `Ctrl + O`, `Enter`, `Ctrl + X`
-
 ### 3.3 배포 스크립트 실행
 
 ```bash

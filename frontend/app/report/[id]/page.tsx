@@ -7,6 +7,7 @@ import { ImpactedIndustriesGrid } from "@/components/impacted-industries-grid";
 import { ReportCTASection } from "@/components/report-cta-section";
 import { ShareButton } from "@/components/share-button";
 import { FiBarChart } from "react-icons/fi";
+import type { Metadata } from "next";
 
 interface ReportPageProps {
   params: Promise<{ id: string }>;
@@ -16,11 +17,65 @@ interface ReportPageProps {
 export const dynamic = "force-dynamic";
 
 /**
+ * HTML 태그 제거
+ */
+function stripHtmlTags(html: string | null): string {
+  if (!html) return "";
+  return html.replace(/<[^>]*>/g, "").trim();
+}
+
+/**
  * 읽는 시간 계산 (200자당 1분)
  */
 function calculateReadingTime(summary: string | null): number {
   if (!summary) return 0;
   return Math.max(1, Math.ceil(summary.length / 200));
+}
+
+/**
+ * 동적 메타데이터 생성
+ */
+export async function generateMetadata({ params }: ReportPageProps): Promise<Metadata> {
+  const { id } = await params;
+  const reportId = parseInt(id, 10);
+
+  if (isNaN(reportId)) {
+    return {
+      title: "보고서를 찾을 수 없습니다",
+      description: "요청하신 보고서를 찾을 수 없습니다.",
+    };
+  }
+
+  try {
+    const report = await getReport(reportId);
+    
+    // summary에서 HTML 태그 제거
+    const cleanSummary = stripHtmlTags(report.summary);
+    const description = cleanSummary 
+      ? (cleanSummary.length > 150 ? cleanSummary.substring(0, 150) + "..." : cleanSummary)
+      : `${report.title} - AI 기반 주식 동향 분석 보고서입니다.`;
+
+    return {
+      title: `${report.title} | 주식 동향 분석`,
+      description: description,
+      openGraph: {
+        title: report.title,
+        description: description,
+        type: "article",
+        publishedTime: report.created_at,
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: report.title,
+        description: description,
+      },
+    };
+  } catch (error) {
+    return {
+      title: "보고서를 찾을 수 없습니다",
+      description: "요청하신 보고서를 찾을 수 없습니다.",
+    };
+  }
 }
 
 /**

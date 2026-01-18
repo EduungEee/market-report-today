@@ -19,10 +19,10 @@ def calculate_health_factor(state: ReportGenerationState, config: Dict[str, Any]
     재무 데이터를 기반으로 각 회사의 health_factor를 계산합니다.
     
     계산 요소:
-    - 매출 성장률 (가중치: 0.3)
     - 수익성 (영업이익률, 가중치: 0.3)
-    - 안정성 (부채비율, 유동비율, 가중치: 0.2)
-    - 수익성 추세 (최근 성장률, 가중치: 0.2)
+    - 부채비율 = 부채총계 / 자본총계 (가중치: 0.3)
+    - 유동비율 = 유동자산 / 유동부채 (가중치: 0.2)
+    - 자기자본비율 = 자본총계 / 자산총계 (가중치: 0.2)
     
     Args:
         state: 현재 상태
@@ -66,94 +66,61 @@ def calculate_health_factor(state: ReportGenerationState, config: Dict[str, Any]
             health_factors[stock_code] = {
                 "health_factor": 0.5,
                 "calculation_details": {
-                    "revenue_growth_score": 0.5,
                     "profitability_score": 0.5,
-                    "stability_score": 0.5,
-                    "trend_score": 0.5
+                    "debt_ratio_score": 0.5,
+                    "current_ratio_score": 0.5,
+                    "equity_ratio_score": 0.5
                 },
                 "note": "재무 데이터 없음"
             }
             continue
         
-        # 1. 매출 성장률 점수 (0-1)
-        revenue_growth = financials.get("revenue_growth", 0)
-        if revenue_growth >= 20:
-            revenue_growth_score = 1.0
-        elif revenue_growth >= 10:
-            revenue_growth_score = 0.8
-        elif revenue_growth >= 5:
-            revenue_growth_score = 0.6
-        elif revenue_growth >= 0:
-            revenue_growth_score = 0.4
-        elif revenue_growth >= -10:
-            revenue_growth_score = 0.2
-        else:
-            revenue_growth_score = 0.0
-        
-        # 2. 수익성 점수 (영업이익률, 0-1)
+        # 1. 수익성 (영업이익률, 높을수록 좋음, 가중치: 0.3)
         operating_margin = financials.get("operating_margin", 0)
-        if operating_margin >= 15:
-            profitability_score = 1.0
-        elif operating_margin >= 10:
-            profitability_score = 0.8
-        elif operating_margin >= 5:
-            profitability_score = 0.6
-        elif operating_margin >= 0:
-            profitability_score = 0.4
+        # 음수면 0.0, 15% 이상이면 1.0, 그 사이는 선형 보간
+        profitability_score = max(0.0, min(1.0, operating_margin / 15.0))
+        
+        # 2. 부채비율 = 부채총계 / 자본총계 (낮을수록 좋음, 가중치: 0.3)
+        total_debt = financials.get("total_debt", 0)
+        equity = financials.get("equity", 0)
+        if equity > 0:
+            debt_ratio = (total_debt / equity) * 100  # 백분율로 변환
         else:
-            profitability_score = 0.0
+            debt_ratio = 100.0  # 자본이 0이면 최악으로 설정
         
-        # 3. 안정성 점수 (부채비율, 유동비율, 0-1)
-        debt_ratio = financials.get("debt_ratio", 100)
-        current_ratio = financials.get("current_ratio", 0)
+        # 부채비율 점수: 0% ~ 100% 범위를 1.0 ~ 0.0으로 선형 변환
+        # 0% 이하면 1.0, 100% 이상이면 0.0
+        debt_ratio_score = max(0.0, min(1.0, (100 - debt_ratio) / 100.0))
         
-        # 부채비율 점수 (낮을수록 좋음)
-        if debt_ratio <= 30:
-            debt_score = 1.0
-        elif debt_ratio <= 50:
-            debt_score = 0.8
-        elif debt_ratio <= 70:
-            debt_score = 0.6
-        elif debt_ratio <= 100:
-            debt_score = 0.4
+        # 3. 유동비율 = 유동자산 / 유동부채 (높을수록 좋음, 가중치: 0.2)
+        current_assets = financials.get("current_assets", 0)
+        current_liabilities = financials.get("current_liabilities", 0)
+        if current_liabilities > 0:
+            current_ratio = current_assets / current_liabilities
         else:
-            debt_score = 0.2
+            current_ratio = 0.0
         
-        # 유동비율 점수 (높을수록 좋음)
-        if current_ratio >= 2.0:
-            current_score = 1.0
-        elif current_ratio >= 1.5:
-            current_score = 0.8
-        elif current_ratio >= 1.0:
-            current_score = 0.6
-        elif current_ratio >= 0.5:
-            current_score = 0.4
+        # 유동비율 점수: 0 ~ 2.0 범위를 0.0 ~ 1.0으로 선형 변환
+        # 2.0 이상이면 1.0, 그 사이는 선형 보간
+        current_ratio_score = max(0.0, min(1.0, current_ratio / 2.0))
+        
+        # 4. 자기자본비율 = 자본총계 / 자산총계 (높을수록 좋음, 가중치: 0.2)
+        total_assets = financials.get("total_assets", 0)
+        if total_assets > 0:
+            equity_ratio = (equity / total_assets) * 100  # 백분율로 변환
         else:
-            current_score = 0.2
+            equity_ratio = 0.0
         
-        stability_score = (debt_score * 0.6 + current_score * 0.4)
-        
-        # 4. 수익성 추세 점수 (영업이익 성장률, 0-1)
-        operating_profit_growth = financials.get("operating_profit_growth", 0)
-        if operating_profit_growth >= 20:
-            trend_score = 1.0
-        elif operating_profit_growth >= 10:
-            trend_score = 0.8
-        elif operating_profit_growth >= 5:
-            trend_score = 0.6
-        elif operating_profit_growth >= 0:
-            trend_score = 0.4
-        elif operating_profit_growth >= -10:
-            trend_score = 0.2
-        else:
-            trend_score = 0.0
+        # 자기자본비율 점수: 0% ~ 100% 범위를 0.0 ~ 1.0으로 선형 변환
+        # 100%면 1.0, 0%면 0.0
+        equity_ratio_score = max(0.0, min(1.0, equity_ratio / 100.0))
         
         # 최종 health_factor 계산 (가중 평균)
         health_factor = (
-            revenue_growth_score * 0.3 +
             profitability_score * 0.3 +
-            stability_score * 0.2 +
-            trend_score * 0.2
+            debt_ratio_score * 0.3 +
+            current_ratio_score * 0.2 +
+            equity_ratio_score * 0.2
         )
         
         # 0-1 범위로 제한
@@ -162,10 +129,10 @@ def calculate_health_factor(state: ReportGenerationState, config: Dict[str, Any]
         health_factors[stock_code] = {
             "health_factor": health_factor,
             "calculation_details": {
-                "revenue_growth_score": revenue_growth_score,
                 "profitability_score": profitability_score,
-                "stability_score": stability_score,
-                "trend_score": trend_score
+                "debt_ratio_score": debt_ratio_score,
+                "current_ratio_score": current_ratio_score,
+                "equity_ratio_score": equity_ratio_score
             }
         }
         

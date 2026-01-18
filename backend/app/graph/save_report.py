@@ -69,7 +69,7 @@ def save_report_to_db(
                 stock_code=company_data.get("stock_code", ""),
                 stock_name=company_data.get("stock_name", ""),
                 expected_trend="neutral",  # 기본값
-                confidence_score=0.5,  # 기본값
+                confidence_score=float(company_data.get("confidence_score", 0.5)),  # 기본값
                 reasoning=company_data.get("reasoning", ""),
                 health_factor=float(company_data.get("health_factor", 0.5)),
                 dart_code=company_data.get("dart_code", "")

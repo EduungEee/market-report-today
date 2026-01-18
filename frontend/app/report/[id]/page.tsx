@@ -152,7 +152,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
                   {report.summary && (
                     <div className="my-10">
                       <div
-                        className="text-lg text-muted-foreground leading-relaxed prose prose-lg max-w-none"
+                        className="text-lg text-muted-foreground leading-relaxed prose prose-lg max-w-none [&>p]:mb-6"
                         dangerouslySetInnerHTML={{
                           __html: (() => {
                             // 이미 <p> 태그가 포함되어 있는지 확인

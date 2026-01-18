@@ -97,7 +97,7 @@ sequenceDiagram
     
     Backend->>Backend: 뉴스 데이터 통합 및 URL 기반 중복 제거
     Backend->>DB: 뉴스 기사 저장 (관계형 DB)
-    Backend->>Backend: 벡터 임베딩 생성 (meta description 기반)
+    Backend->>Backend: 벡터 임베딩 생성 (content 기반)
     Backend->>DB: 벡터 데이터 저장 (pgvector, metadata 포함)
 ```
 
@@ -112,8 +112,8 @@ sequenceDiagram
 
     Note over Scheduler: 매일 아침 6시 자동 실행
     Scheduler->>Backend: POST /api/analyze 호출
-    Backend->>DB: 벡터 DB에서 전날 6시~현재 뉴스 조회
-    DB-->>Backend: 뉴스 기사 목록 (24시간치)
+    Backend->>DB: 벡터 DB에서 전날 6시~당일 23:59:59 뉴스 조회
+    DB-->>Backend: 뉴스 기사 목록
     Backend->>OpenAI: 뉴스 분석 요청 (취합된 뉴스)
     OpenAI-->>Backend: 분석 결과 (요약, 산업, 주식)
 
@@ -122,38 +122,7 @@ sequenceDiagram
     Backend->>DB: 주식 분석 저장
 ```
 
-### 3. 수동 분석 요청 플로우 (선택사항)
-
-```mermaid
-sequenceDiagram
-    participant User as 사용자
-    participant Frontend as Next.js Frontend
-    participant Backend as FastAPI Backend
-    participant DB as PostgreSQL
-    participant OpenAI as OpenAI API
-
-    User->>Frontend: 분석 요청 (수동)
-    Frontend->>Backend: POST /api/analyze
-    Backend->>Backend: 날짜 검증 및 중복 확인
-
-    alt 이미 분석된 날짜
-        Backend-->>Frontend: 이미 존재하는 보고서 반환
-    else 새로운 분석
-        Backend->>DB: 벡터 DB에서 지정 기간 뉴스 조회
-        DB-->>Backend: 뉴스 기사 목록
-        Backend->>OpenAI: 뉴스 분석 요청
-        OpenAI-->>Backend: 분석 결과 (요약, 산업, 주식)
-
-        Backend->>DB: 보고서 저장
-        Backend->>DB: 산업 분석 저장
-        Backend->>DB: 주식 분석 저장
-
-        Backend-->>Frontend: 보고서 ID 반환
-        Frontend-->>User: 분석 완료 표시
-    end
-```
-
-### 4. 이메일 전송 플로우 (매일 아침 7시)
+### 3. 이메일 전송 플로우 (매일 아침 7시)
 
 ```mermaid
 sequenceDiagram
@@ -175,7 +144,7 @@ sequenceDiagram
     end
 ```
 
-### 5. 보고서 조회 플로우
+### 4. 보고서 조회 플로우
 
 ```mermaid
 sequenceDiagram
